@@ -4,6 +4,9 @@ import cvxpy as cp
 import control as ct
 from scipy.linalg import expm
 from scipy.optimize import linprog
+from scipy.spatial import ConvexHull, HalfspaceIntersection
+from shapely.geometry import Polygon
+import geopandas as gpd
 
 class MPC:
     def __init__(self, A, B, C, Q, R, x0, N):
@@ -76,7 +79,66 @@ class MPC:
             Ft = F @ Ft
         return A_inf, b_inf
     
-    def ComputeXfellipse(self):
+    def ComputeXfellipse(self, Ax, Au, bx, bu, ax):
+        
+        Ellipsoid_m = self.P
+        x = cp.Variable(self.dimx)
+        cost = cp.quad_form(x, Ellipsoid_m)
+        
+        Au_x = -Au@self.K
+        constraintsA = np.vstack((Ax, Au_x))
+        constraintsb = np.hstack((bx, bu))
+        con_size = constraintsb.size
+        c_min = np.inf
+        for i in range(con_size):
+            constraint = [constraintsA[i]@x == constraintsb[i]]
+            prob = cp.Problem(cp.Minimize(cost), constraint)
+            prob.solve()
+            
+            c = prob.value
+            if c < c_min:
+                c_min = c
+                
+        P_inv = np.linalg.inv(Ellipsoid_m)
+        # 2. Extract the 2x2 submatrix for the two states we want to draw
+        # np.ix_ allows us to pull out the specific rows and columns safely
+        c = c_min
+        # Scale it by your constant c
+        Cov = c * P_inv
+
+        # 3. Generate 100 points around a standard unit circle
+        angles = np.linspace(0, 2 * np.pi, 100)
+        circle_points = np.vstack((np.cos(angles), np.sin(angles)))
+        
+        # 4. Transform the circle into our specific ellipse using Eigen decomposition
+        # Cov = V * D * V^T, where V are eigenvectors and D are eigenvalues
+        eigenvalues, eigenvectors = np.linalg.eigh(Cov)
+
+        # The transformation matrix is V * sqrt(D)
+        transform_matrix = eigenvectors @ np.diag(np.sqrt(eigenvalues))
+        u1 = eigenvectors[:, 0] * np.sqrt(eigenvalues[0])
+        u2 = eigenvectors[:, 1] * np.sqrt(eigenvalues[1])
+        vertex1 = u1+u2
+        vertex2 = u1-u2
+        vertex3 = -u1-u2
+        vertex4 = -u1+u2
+        # Apply transformation to the circle points
+        ellipse_points = transform_matrix @ circle_points
+        
+        ax.plot(ellipse_points[0, :], ellipse_points[1, :], 'b-', lw=2, label=f'Vf(x) <= {c}')
+        ax.fill(ellipse_points[0, :], ellipse_points[1, :], 'b', alpha=0.2)
+        ax.plot(vertex1[0], vertex1[1], marker="o")
+        ax.plot(vertex2[0], vertex2[1], marker="o")
+        ax.plot(vertex3[0], vertex3[1], marker="o")
+        ax.plot(vertex4[0], vertex4[1], marker="o")
+        # Plot formatting
+        ax.set_title(f"Terminal Region")
+        ax.axhline(0, color='black', lw=0.5)
+        ax.axvline(0, color='black', lw=0.5)
+        ax.grid(True, linestyle='--', alpha=0.7)
+        ax.legend()
+        ax.axis('equal') # Ensures the visual shape isn't distorted by axis stretching
+        
         return 0
     
     def mpc(self, x0):
@@ -104,7 +166,7 @@ class MPC:
         #constraints += [x[:,-1]==0]
         
         #TERMINAL COST
-        #cost += 0.5*(cp.quad_form(x[:,-1], self.P) )
+        cost += 0.5*(cp.quad_form(x[:,-1], self.P) )
         
         problem = cp.Problem(cp.Minimize(cost), constraints)
 
@@ -127,8 +189,8 @@ class MPC:
     
 if __name__ == "__main__":
     # Setup matrices
-    A = np.array([[4/3, -2/3],
-                  [1, 0]])
+    A = np.array([[100, 0],
+                  [1, 2]])
     B = np.array([[1],
                   [0]])
     C = np.array([[-2/3,1]])
@@ -138,11 +200,16 @@ if __name__ == "__main__":
 
     # Time
     N = 5
-    Time = 5
+    Time = 30
     t = np.arange(Time)
     # Create object
     my_sys = MPC(A, B, C, Q, R, x0, N)
     # If we were to discretize the model:
+    
+    # Testing the Ellipse code
+    #my_sys.ComputeXfellipse()
+    
+    """
     SamplingTime = 0.01
     Ad, Bd = my_sys.ZeroOrderHold(SamplingTime)
     print(f"Discreet A:\n{Ad}\n")
@@ -160,7 +227,7 @@ if __name__ == "__main__":
         u_hist[:,i] = u 
         x_hist[:,i+1] = x_plus
         y_hist[:,i] = y
-    """
+    
     fig, ax = plt.subplots(2,1, figsize=(16,8))
 
     ax[0].plot(t, y_hist[0], label=f'$y$')
@@ -174,9 +241,9 @@ if __name__ == "__main__":
     ax[0].grid()
     ax[1].grid()
     plt.show()
-    """
-    # Code for testing terminal set
     
+    # Code for testing terminal set
+    """
     A1 = np.array([[2,1],
               [0,2]])
     B1 = np.eye(2)
@@ -194,13 +261,31 @@ if __name__ == "__main__":
     A_x = np.array([[1,0],
                     [-1,0]])
     # Constraint b matrices 
-    b_u = 1*np.ones((4))
-    b_x = np.array([5,5])
+    b_u = 5*np.ones((4))
+    b_x = 1*np.array([5,5])
     
     A_inf, b_inf = TermTest.ComputeXfineq(A_x, A_u, b_x, b_u)
     
-    print(A_inf)
-    print(b_inf)
- 
+    def plot_polygon(A, b, ax):
+        '''
+        Visualize the polytope defined by A x <= b.
+        '''
+        halfspaces = np.hstack((A, -b[:, np.newaxis]))
+        feasible_point = np.zeros(A.shape[1])
+        hs = HalfspaceIntersection(halfspaces, feasible_point)
+        polygon = Polygon(hs.intersections).convex_hull
+        polygon_gpd = gpd.GeoSeries(polygon)
+        polygon_gpd.plot(ax=ax, alpha=0.3)
+        plt.plot(*polygon.exterior.xy, 'ro')
+        plt.axis('equal')
+        plt.grid()
+        
+    fig, ax = plt.subplots(figsize=(8, 8))
+    plot_polygon(A_inf, b_inf, ax)
+    TermTest.ComputeXfellipse(A_x, A_u, b_x, b_u, ax)
+    plt.show()
+    #print(A_inf)
+    #print(b_inf)
+    
 
         
