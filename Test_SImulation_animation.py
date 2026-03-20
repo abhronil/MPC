@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-from Model import nonLinearModel
+from Model import SystemModel 
 
 params = {
     'Jw': 0.005, 'Jp': 0.05, 
@@ -10,7 +10,7 @@ params = {
     'b1': 0.01, 'b2': 0.005
 }
 
-plant = nonLinearModel(params)
+plant = SystemModel(params)
 
 theta = np.pi - 0.01  
 theta_dot = 0.0
@@ -18,21 +18,18 @@ phi = 0.0
 phi_dot = 0.0
 
 dt = 0.05
-total_time = 15.0
+total_time = 25.0
 num_steps = int(total_time / dt)
 
 history_theta = []
 history_phi = []
 
-print("Simulating physics...")
 for _ in range(num_steps):
     history_theta.append(theta)
     history_phi.append(phi)
     
     tau = 0.0
-    theta, theta_dot, phi, phi_dot = plant.next_step(theta, theta_dot, phi, phi_dot, tau, dt)
-
-print("Building animation...")
+    theta, theta_dot, phi, phi_dot = plant.next_step_nonlinear(theta, theta_dot, phi, phi_dot, tau, dt)
 
 
 fig, ax = plt.subplots(figsize=(6, 6))
