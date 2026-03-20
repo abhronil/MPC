@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.integrate import solve_ivp
 
-class nonLinearModel:
+class SystemModel:
     def __init__(self, params):
         self.Jw = params['Jw']
         self.Jp = params['Jp']
@@ -19,7 +19,7 @@ class nonLinearModel:
         phi_dot_dot = ((tau - self.b2 * phi_dot) / self.Jw) - theta_dot_dot
         return [theta_dot, theta_dot_dot, phi_dot, phi_dot_dot]
     
-    def next_step(self, theta, theta_dot, phi, phi_dot, tau, dt):
+    def next_step_nonlinear(self, theta, theta_dot, phi, phi_dot, tau, dt):
         x_plus_one = solve_ivp(
             lambda t, y: self.System_dynamics(y[0], y[1], y[2], y[3], tau), 
             [0, dt], 
@@ -28,3 +28,30 @@ class nonLinearModel:
         )
         theta_x_plus_1, theta_dot_x_plus_1, phi_x_plus_1, phi_dot_x_plus_1 = x_plus_one.y[:, -1]
         return theta_x_plus_1, theta_dot_x_plus_1, phi_x_plus_1, phi_dot_x_plus_1
+    
+    def Linearised(self, theta, theta_dot, phi, phi_dot, tau, theta_eq):
+        ml = (self.mp * self.lp) + (self.mw * self.lw)
+        u = tau
+        '''
+        x = np.array([theta_dot, theta, phi_dot, phi])
+        A = np.array([
+        [-self.b1/self.Jp, -(ml*self.g*np.cos(theta_eq))/self.Jp, self.b2/self.Jp, 0],
+        [1, 0, 0, 0],
+        [self.b1/self.Jp, (ml*self.g*np.cos(theta_eq))/self.Jp, -(self.b2/self.Jp + self.b2/self.Jw), 0],
+        [0, 0, 1, 0]])
+        B =  np.array([[-1],[0],[1],[0]])
+        C = np.array([[0, 1, 0, 0],[0, 0, 0, 1]])
+        '''
+        # State vector: [theta, theta_dot, phi, phi_dot] imporant to keep the order consistent with the nonlinear model
+        x = np.array([theta, theta_dot, phi, phi_dot])
+        A = np.array([
+            [0, 1, 0, 0], 
+            [-(ml * self.g * np.cos(theta_eq))/self.Jp, -self.b1/self.Jp, 0, self.b2/self.Jp], 
+            [0, 0, 0, 1], 
+            [(ml * self.g * np.cos(theta_eq))/self.Jp,   self.b1/self.Jp, 0, -(self.b2/self.Jp + self.b2/self.Jw)]
+        ])
+        B =  np.array([0, -1, 0, 1])
+        C = np.array([[1, 0, 0, 0],[0, 0, 1, 0]])
+        x_dot = A @ x + B * u
+        y = C @ x   
+        return x_dot, y
