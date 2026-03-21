@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.integrate import solve_ivp
+from scipy.linalg import expm
 
 class SystemModel:
     def __init__(self, params):
@@ -29,7 +30,7 @@ class SystemModel:
         theta_x_plus_1, theta_dot_x_plus_1, phi_x_plus_1, phi_dot_x_plus_1 = x_plus_one.y[:, -1]
         return theta_x_plus_1, theta_dot_x_plus_1, phi_x_plus_1, phi_dot_x_plus_1
     
-    def Linearised(self, theta, theta_dot, phi, phi_dot, tau, theta_eq):
+    def Linearised(self, theta, theta_dot, phi, phi_dot, tau, theta_eq, SamplingTime):
         ml = (self.mp * self.lp) + (self.mw * self.lw)
         u = tau
         '''
@@ -54,4 +55,17 @@ class SystemModel:
         C = np.array([[1, 0, 0, 0],[0, 0, 1, 0]])
         x_dot = A @ x + B * u
         y = C @ x   
-        return x_dot, y
+
+        ## ZOH Discretization
+        dim_x = A.shape[0]
+        dim_y = C.shape[0]
+        dim_u = B.shape[1]
+        AB = np.zeros((self.dimx+self.dimu, self.dimx + self.dimu))
+        AB[:self.dimx,:self.dimx] = self.A
+        AB[:self.dimx,self.dimx:] = self.B
+        exp = expm(AB*SamplingTime)
+        Adisc = exp[:self.dimx, :self.dimx]
+        Bdisc = exp[:self.dimx, self.dimx:]
+        x_k_plus_1 = Adisc @ x + Bdisc * u
+
+        return x_dot, y, x_k_plus_1, Adisc, Bdisc
