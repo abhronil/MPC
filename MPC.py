@@ -9,7 +9,7 @@ from shapely.geometry import Polygon
 import geopandas as gpd
 
 class MPC:
-    def __init__(self, A, B, C, Q, R, x0, N):
+    def __init__(self, A, B, C, Q, R, N):
         """
         Inputs: 
         A - State dynamics, (n X n)
@@ -25,7 +25,6 @@ class MPC:
         self.C = C
         self.Q = Q
         self.R = R
-        self.x0 = x0
         self.Horizon = N
         self.dimx = A.shape[0]
         self.dimy = C.shape[0]
@@ -159,7 +158,7 @@ class MPC:
             #constraints += [x[0,i] <= 5]
             #constraints += [x[0,i]>=-5]
             
-            cost += 0.5*(cp.quad_form(x[:,i], self.Q) + cp.square(u[:,i])@ self.R)
+            cost += 0.5*(cp.quad_form(x[:,i], self.Q) + cp.square(u[:,i])* self.R)
         
         #TERMINAL CONSTRAINT
         # IF Terminal constraint Set is not added in the MPC object, do not use it     
@@ -171,7 +170,9 @@ class MPC:
         problem = cp.Problem(cp.Minimize(cost), constraints)
 
         problem.solve()
-        print(f"MPC solved with status: {problem.status}")
+        if problem.status != "optimal":
+            print(f"Infeasible")
+            return 0
         input = u.value[:,0]     
         return input
     

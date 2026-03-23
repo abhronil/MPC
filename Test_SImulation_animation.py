@@ -7,7 +7,8 @@ params = {
     'Jw': 0.005, 'Jp': 0.05, 
     'mp': 0.4, 'mw': 0.2, 
     'lp': 0.3, 'lw': 0.3, 
-    'b1': 0.01, 'b2': 0.005
+    'b1': 0.01, 'b2': 0.005,
+    'SamplingTime': 0.01, 'Theta_eq': np.pi
 }
 
 plant = SystemModel(params)
