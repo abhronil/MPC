@@ -7,9 +7,10 @@ from scipy.optimize import linprog
 from scipy.spatial import ConvexHull, HalfspaceIntersection
 from shapely.geometry import Polygon
 import geopandas as gpd
+from scipy.linalg import block_diag
 
 class Controllers:
-    def __init__(self, A, B, C, Q, R, N):
+    def __init__(self, A, B, C, Q, R, N, yref):
         """
         Inputs: 
         A - State dynamics, (n X n)
@@ -29,10 +30,31 @@ class Controllers:
         self.dimx = A.shape[0]
         self.dimy = C.shape[0]
         self.dimu = B.shape[1]
+        self.distC = np.zeros((2,1))
+        self.distB = B
         self.K, self.P, _ = ct.dlqr(A, B, Q, R)
+        
+        self.dimd = 1
+        self.yref = yref
+        self.A_aug, self.B_aug, self.C_aug = self.augment_matrix()
+        self.Q_kf = np.diag([1e-6, 1e-6, 1e-6, 1e-6, 1e-6])
+        self.L,_,_ = ct.dlqe(self.A_aug, np.eye(self.dimx+self.dimd),  self.C_aug, self.Q_kf, 1e-6*np.eye(2))
+        print(self.L.shape)
 
-    def forward(self, x, u):
-        x_plus = self.A@x + self.B@u
+    def forward_real(self, x, u, d = None):
+        if d is not None:
+            v = np.random.multivariate_normal(np.zeros(2), 1e-6*np.eye(2))
+        else:
+            d = np.zeros((1,1))
+            v = np.zeros((2,1))
+        x_plus = self.A@x + self.B@u + self.distB@d[:]
+        y = self.C@x + v.reshape(-1,1)
+        return x_plus, y
+    def forward_MPC(self, x, u, d = None):
+        if d is None:
+            d = np.zeros((1,1))  
+        x_plus = self.A@x + self.B@u + (self.distB@d).flatten()
+        
         y = self.C@x
         return x_plus, y
     
@@ -76,8 +98,7 @@ class Controllers:
             b_inf = np.hstack((b_inf, constraintsb))
             # Propagate dynamics
             Ft = F @ Ft
-        return A_inf, b_inf
-    
+        return A_inf, b_inf    
     def ComputeXfellipse(self, Ax, Au, bx, bu, ax):
         
         Ellipsoid_m = self.P
@@ -97,7 +118,7 @@ class Controllers:
             c = prob.value
             if c < c_min:
                 c_min = c
-                
+        """     
         P_inv = np.linalg.inv(Ellipsoid_m)
         # 2. Extract the 2x2 submatrix for the two states we want to draw
         # np.ix_ allows us to pull out the specific rows and columns safely
@@ -137,36 +158,81 @@ class Controllers:
         ax.grid(True, linestyle='--', alpha=0.7)
         ax.legend()
         ax.axis('equal') # Ensures the visual shape isn't distorted by axis stretching
+        """
+        return c_min
+    def augment_matrix(self):
+        A_aug = block_diag(self.A, np.eye(self.dimd))
+        A_aug[:self.dimx,self.dimx:] = self.distB
+        B_aug = np.vstack((self.B, np.zeros((self.dimd, self.dimu))))
+        C_aug = np.hstack((self.C, self.distC))
         
-        return 0
+        observ = ct.obsv(A_aug, C_aug)
+        r = np.linalg.matrix_rank(observ)
+        if r == self.dimd+self.dimx:
+            print("Ho ho ho")
+        else: 
+            print("MMmmm No")
+        
+        #self.L = ct.place(A_aug.T, C_aug.T,[0.2,0.25,0.7,0.3,0.31]).T
+        return A_aug, B_aug, C_aug
+    def observ_forward(self, x_aug, y, u):
+        y_aug = self.C_aug@x_aug
+        x_aug_plus = self.A_aug@x_aug + self.B_aug@u + self.L@(y-y_aug)
+        x_plus_ob = x_aug_plus[:self.dimx]
+        d_plus_ob = x_aug_plus[self.dimx:]
+        return x_plus_ob, d_plus_ob, y_aug
     
-    def mpc(self, x0, TermSet = None, TermRHS = None):
+    def OTS(self, dist):
+        xref = cp.Variable((self.dimx,1))
+        uref = cp.Variable((self.dimu,1))
+        constraints = []
+        constraints+= [(np.eye(self.dimx)-self.A)@xref-self.B@uref == self.distB@dist]
+        constraints+= [self.C[0:1,:]@xref == self.yref-self.distC[0:1,:]@dist]
+        # Constraints
+        constraints+= [uref <=0.5, -uref <=0.5]
+        constraints+= [xref[0] <=0.3, -xref[0]<=0.3]
+        cost = cp.quad_form(uref, np.eye(self.dimu))
+        problem = cp.Problem(cp.Minimize(cost), constraints)
+        problem.solve()
+        x_target = xref.value
+        u_target = uref.value
+        if x_target is None:
+            print("Could not find a reference to reject the disturbance")
+        return np.squeeze(x_target), np.squeeze(u_target)
+    
+    def mpc(self, x0, TermSet = None, TermRHS = None, dist = None):
         x = cp.Variable((self.dimx, self.Horizon+1))
         u = cp.Variable((self.dimu, self.Horizon))
         cost = 0
         constraints = []
+        if dist is not None:
+            x_target, u_target = self.OTS(dist)
+        else: 
+            x_target = np.zeros((self.dimx))
+            u_target = 0
+            
         constraints += [x[:,0] == x0]
         for i in range(self.Horizon):
             # Dynamic constraint
-            constraints += [x[:,i+1] == self.forward(x[:,i], u[:,i])[0]]
-            
+            constraints += [x[:,i+1] == self.forward_MPC(x[:,i], u[:,i], dist)[0]]
+            # SET CONSTRAINTS TO 0 FOR TESTING
             # INPUT CONSTRAINTS
             constraints += [u[:,i] <= 0.5]
             constraints += [u[:,i]>= -0.5]
 
-            # STATE CONSTRAINTS
+            # STATE CONSTRAINTS 
             constraints += [x[0,i] <= 0.3]
             constraints += [x[0,i]>=-0.3]
             
-            cost += 0.5*(cp.quad_form(x[:,i], self.Q) + cp.square(u[:,i])* self.R)
+            cost += 0.5*(cp.quad_form(x[:,i]-x_target, self.Q) + cp.square(u[:,i]-u_target)* self.R)
         
         #TERMINAL CONSTRAINT
         # IF Terminal constraint Set is not added in the MPC object, do not use it  
         if TermSet is not None and TermRHS is not None:   
-            constraints += [TermSet@x[:,-1]<=TermRHS]
+            constraints += [TermSet@(x[:,-1]-x_target)<=TermRHS]
         
         #TERMINAL COST
-        cost += 0.5*(cp.quad_form(x[:,-1], self.P))
+        cost += 0.5*(cp.quad_form(x[:,-1]-x_target, self.P))
         
         problem = cp.Problem(cp.Minimize(cost), constraints)
 
@@ -205,7 +271,7 @@ if __name__ == "__main__":
     Time = 30
     t = np.arange(Time)
     # Create object
-    my_sys = Controllers(A, B, C, Q, R, x0, N)
+    my_sys = Controllers(A, B, C, Q, R, N)
     # If we were to discretize the model:
     
     # Testing the Ellipse code
@@ -252,7 +318,7 @@ if __name__ == "__main__":
     alpha = 1e-5
     Q1 = alpha*np.eye(2)
     R1 = np.eye(2)
-    TermTest = Controllers(A1, B1, C, Q1, R1, x0, N)
+    TermTest = Controllers(A1, B1, C, Q1, R1, N)
 
     # Constraints A matrices
     # Input

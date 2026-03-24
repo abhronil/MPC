@@ -21,9 +21,9 @@ A_d, B_d = plant.ZeroOrderHold(params['SamplingTime'])
 Q_val = np.array([5000, 0.01, 0.01, 0.01])
 Q = np.diag(Q_val)
 R = 1
-N = 5
-
-Controller = Controllers(A_d, B_d, C, Q, R, N)
+N = 3
+yref = np.array([0])
+Controller = Controllers(A_d, B_d, C, Q, R, N, yref)
 
 omega_n = np.sqrt(plant.Jp / (plant.ml * plant.g))
 Sampling_time = 0.2/omega_n
@@ -40,11 +40,16 @@ num_steps = int(total_time / dt)
 num_steps_dis = int(total_time / params["SamplingTime"])
 x_lin_err = np.zeros((4,num_steps_dis+1))
 y_lin_err = np.zeros((2,num_steps_dis))
+
+x_obs = np.zeros((4,num_steps_dis+1))
+y_obs = np.zeros((2,num_steps_dis))
+
+d_lin = np.zeros((1,num_steps_dis+1))
 u_nl = []
 u_lin = []
 
 x_nl = np.zeros((4, num_steps + 1))
-deviation = np.array([-0.30, 0.0, -0.0, 0.])
+deviation = np.array([-0.0, 0., -0.0, 0.0])
 if params['Theta_eq'] == 0:
     x_eq = np.array([0., 0., 0., 0.])
     x0 = x_eq+deviation
@@ -55,6 +60,7 @@ else:
     
 x_nl[:, 0] = x0
 x_lin_err[:, 0] = deviation
+x_obs[:,0] = deviation
 
 theta, theta_dot, phi, phi_dot = x0[0], x0[1], x0[2], x0[3]
 
@@ -71,7 +77,83 @@ Au[1,0] = -1
 gu= 0.5 * np.ones((2))
 
 A_con, g_con = Controller.ComputeXfineq(Ax, Au, gx, gu)
+d = np.array([[0.1]])
 
+#print(x_target, u_target)
+
+for i in range(num_steps):
+    if i % calc_u_count == 0:
+        k = i // calc_u_count
+        #error_nl = x_nl[:, i] - x_eq
+        #tau_nl = Controller.mpc(error_nl, A_con, g_con)[0]  
+        tau_lin = Controller.mpc(x_obs[:,k], A_con, g_con, dist=d_lin[:,[k]])[0]
+        tau_lin_vec = np.array([[tau_lin]])
+        #u_nl.append(tau_nl)
+        u_lin.append(tau_lin)
+        x_aug = np.vstack((x_obs[:,[k]], d_lin[:,[k]]))
+        x_lin_err[:,[k+1]], y_lin_err[:,[k]] = Controller.forward_real(x_lin_err[:,[k]], tau_lin_vec, d)
+        x_obs[:,[k+1]], d_lin[:,[k+1]], y_obs[:,[k]] = Controller.observ_forward(x_aug, y_lin_err[:,[k]], tau_lin_vec)
+        
+
+
+
+t_d = np.arange(num_steps_dis + 1) * params['SamplingTime']
+u_lin = np.array(u_lin)
+
+fig, axes = plt.subplots(4, 2, figsize=(12, 14))
+fig.suptitle('Observer-based MPC Response')
+
+labels = ['θ error (rad)', 'θ̇ error (rad/s)', 'φ error (rad)', 'φ̇ error (rad/s)']
+titles = ['Pendulum angle error', 'Pendulum angular velocity error', 'Wheel angle error', 'Wheel angular velocity error']
+
+for i in range(4):
+    axes[i, 0].stairs(x_lin_err[i, :-1], t_d, label='True error')
+    axes[i, 0].stairs(x_obs[i, :-1], t_d, linestyle='--', label='Observed')
+    axes[i, 0].set_ylabel(labels[i])
+    axes[i, 0].set_title(titles[i])
+    axes[i, 0].set_xlabel('Time (s)')
+    axes[i, 0].legend()
+    axes[i, 0].grid(True)
+
+axes[0, 1].stairs(d_lin[0, :-1], t_d, color='tab:orange', label='Estimated disturbance')
+axes[0, 1].axhline(d[0, 0], color='k', linestyle='--', label=f'True disturbance ({d[0,0]})')
+axes[0, 1].set_ylabel('d')
+axes[0, 1].set_title('Disturbance estimate')
+axes[0, 1].set_xlabel('Time (s)')
+axes[0, 1].legend()
+axes[0, 1].grid(True)
+
+axes[1, 1].stairs(u_lin, t_d, color='tab:red', label='Control torque')
+axes[1, 1].set_ylabel('τ (N·m)')
+axes[1, 1].set_title('Control torque')
+axes[1, 1].set_xlabel('Time (s)')
+axes[1, 1].legend()
+axes[1, 1].grid(True)
+
+axes[2, 1].stairs(y_lin_err[0, :], t_d, label='y1 (theta)')
+axes[2, 1].stairs(y_obs[0, :], t_d, linestyle='--', label='y1 observed')
+axes[2, 1].set_ylabel('y1')
+axes[2, 1].set_title('Output y1 (θ)')
+axes[2, 1].set_xlabel('Time (s)')
+axes[2, 1].legend()
+axes[2, 1].grid(True)
+
+axes[3, 1].stairs(y_lin_err[1, :], t_d, label='y2 (phi)')
+axes[3, 1].stairs(y_obs[1, :], t_d, linestyle='--', label='y2 observed')
+axes[3, 1].set_ylabel('y2')
+axes[3, 1].set_title('Output y2 (φ)')
+axes[3, 1].set_xlabel('Time (s)')
+axes[3, 1].legend()
+axes[3, 1].grid(True)
+
+plt.tight_layout()
+plt.show()
+
+
+
+
+
+"""
 for i in range(num_steps):
     if i % calc_u_count == 0:
         k = i // calc_u_count
@@ -150,3 +232,4 @@ axes[2, 0].legend()
 axes[2, 0].grid(True)
 plt.tight_layout()
 plt.show()
+"""
