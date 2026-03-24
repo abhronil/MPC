@@ -8,7 +8,7 @@ from scipy.spatial import ConvexHull, HalfspaceIntersection
 from shapely.geometry import Polygon
 import geopandas as gpd
 
-class MPC:
+class Controllers:
     def __init__(self, A, B, C, Q, R, N):
         """
         Inputs: 
@@ -151,12 +151,12 @@ class MPC:
             constraints += [x[:,i+1] == self.forward(x[:,i], u[:,i])[0]]
             
             # INPUT CONSTRAINTS
-            #constraints += [u[:,i] <= 1]
-            #constraints += [u[:,i]>= -1]
+            #constraints += [u[:,i] <= 0.5]
+            #constraints += [u[:,i]>= -0.5]
 
             # STATE CONSTRAINTS
-            #constraints += [x[0,i] <= 5]
-            #constraints += [x[0,i]>=-5]
+            #constraints += [x[0,i] <= 0.12]
+            #constraints += [x[0,i]>=-0.12]
             
             cost += 0.5*(cp.quad_form(x[:,i], self.Q) + cp.square(u[:,i])* self.R)
         

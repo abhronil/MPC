@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from Model import SystemModel 
-from MPC import MPC
+from Control import Controllers
 import control as ct
 
 params = {
@@ -10,7 +10,7 @@ params = {
     'mp': 0.4, 'mw': 0.2, 
     'lp': 0.3, 'lw': 0.3, 
     'b1': 0.01, 'b2': 0.005,
-    'SamplingTime': 0.5, 'Theta_eq': np.pi
+    'SamplingTime': 0.1, 'Theta_eq': np.pi
 }
 
 
@@ -18,11 +18,12 @@ plant = SystemModel(params)
 
 A, B, C = plant.Linearised(params['Theta_eq'])
 A_d, B_d = plant.ZeroOrderHold(params['SamplingTime'])
-Q = 50*np.eye(4)
-R = 0.1
-N = 2
+Q_val = np.array([5000, 0.01, 0.01, 0.01])
+Q = np.diag(Q_val)
+R = 1
+N = 5
 
-MPC_ob = MPC(A_d, B_d, C, Q, R, N)
+Controller = Controllers(A_d, B_d, C, Q, R, N)
 
 omega_n = np.sqrt(plant.Jp / (plant.ml * plant.g))
 Sampling_time = 0.2/omega_n
@@ -34,7 +35,7 @@ else:
     print(f"Boohoo")
 
 dt = 0.01
-total_time = 20.0
+total_time = 10.0
 num_steps = int(total_time / dt)
 num_steps_dis = int(total_time / params["SamplingTime"])
 x = np.zeros((4,num_steps+1))
@@ -42,26 +43,26 @@ y = np.zeros((2,num_steps))
 u = []
 
 x_nl = np.zeros((4, num_steps + 1))
+deviation = np.array([-0.3, 0.5, -0.2, 0.])
+if params['Theta_eq'] == 0:
+    x_eq = np.array([0., 0., 0., 0.])
+    x0 = x_eq+deviation
+else:
+    x_eq = np.array([np.pi, 0., 0., 0.])
+    x0 = x_eq+deviation
+    
+    
+x_nl[:, 0] = x0
 
-
-x0 = np.array([
-    [np.pi+0.2],
-    [1],
-    [3.],
-    [-0.]
-])
-
-x_nl[:, [0]] = x0
-
-theta, theta_dot, phi, phi_dot = x0[0,0], x0[1,0], x0[2,0], x0[3,0]
+theta, theta_dot, phi, phi_dot = x0[0], x0[1], x0[2], x0[3]
 
 calc_u_count = int(params["SamplingTime"] / dt)
 
-x_eq = np.array([np.pi, 0., 0., 0.])
+
 for i in range(num_steps):
     if i % calc_u_count == 0:
         error = x_nl[:, i] - x_eq
-        tau = MPC_ob.mpc(error)[0]
+        tau = Controllers.mpc(error)[0]
         u.append(tau)
         #x[:,i+1], y[:,i] = plant.forward_discreet_linear(x[:,i], tau)
     
@@ -119,8 +120,7 @@ for i, ax in enumerate(axes.flat[:4]):
     ax.set_xlabel('Time (s)')
     ax.legend()
     ax.grid(True)
-print(u.shape)
-print(t_d.shape)
+
 axes[2, 0].stairs(u, t_d, color='tab:red', label='Torque')
 axes[2, 0].set_ylabel('τ (N·m)')
 axes[2, 0].set_title('Control torque')
