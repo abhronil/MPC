@@ -140,7 +140,7 @@ class Controllers:
         
         return 0
     
-    def mpc(self, x0):
+    def mpc(self, x0, TermSet = None, TermRHS = None):
         x = cp.Variable((self.dimx, self.Horizon+1))
         u = cp.Variable((self.dimu, self.Horizon))
         cost = 0
@@ -151,21 +151,22 @@ class Controllers:
             constraints += [x[:,i+1] == self.forward(x[:,i], u[:,i])[0]]
             
             # INPUT CONSTRAINTS
-            #constraints += [u[:,i] <= 0.5]
-            #constraints += [u[:,i]>= -0.5]
+            constraints += [u[:,i] <= 0.5]
+            constraints += [u[:,i]>= -0.5]
 
             # STATE CONSTRAINTS
-            #constraints += [x[0,i] <= 0.12]
-            #constraints += [x[0,i]>=-0.12]
+            constraints += [x[0,i] <= 0.3]
+            constraints += [x[0,i]>=-0.3]
             
             cost += 0.5*(cp.quad_form(x[:,i], self.Q) + cp.square(u[:,i])* self.R)
         
         #TERMINAL CONSTRAINT
-        # IF Terminal constraint Set is not added in the MPC object, do not use it     
-        #constraints += [x[:,-1]==0]
+        # IF Terminal constraint Set is not added in the MPC object, do not use it  
+        if TermSet is not None and TermRHS is not None:   
+            constraints += [TermSet@x[:,-1]<=TermRHS]
         
         #TERMINAL COST
-        cost += 0.5*(cp.quad_form(x[:,-1], self.P) )
+        cost += 0.5*(cp.quad_form(x[:,-1], self.P))
         
         problem = cp.Problem(cp.Minimize(cost), constraints)
 
@@ -204,7 +205,7 @@ if __name__ == "__main__":
     Time = 30
     t = np.arange(Time)
     # Create object
-    my_sys = MPC(A, B, C, Q, R, x0, N)
+    my_sys = Controllers(A, B, C, Q, R, x0, N)
     # If we were to discretize the model:
     
     # Testing the Ellipse code
@@ -251,7 +252,7 @@ if __name__ == "__main__":
     alpha = 1e-5
     Q1 = alpha*np.eye(2)
     R1 = np.eye(2)
-    TermTest = MPC(A1, B1, C, Q1, R1, x0, N)
+    TermTest = Controllers(A1, B1, C, Q1, R1, x0, N)
 
     # Constraints A matrices
     # Input

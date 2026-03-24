@@ -38,12 +38,13 @@ dt = 0.01
 total_time = 10.0
 num_steps = int(total_time / dt)
 num_steps_dis = int(total_time / params["SamplingTime"])
-x = np.zeros((4,num_steps+1))
-y = np.zeros((2,num_steps))
-u = []
+x_lin_err = np.zeros((4,num_steps_dis+1))
+y_lin_err = np.zeros((2,num_steps_dis))
+u_nl = []
+u_lin = []
 
 x_nl = np.zeros((4, num_steps + 1))
-deviation = np.array([-0.3, 0.5, -0.2, 0.])
+deviation = np.array([-0.30, 0.0, -0.0, 0.])
 if params['Theta_eq'] == 0:
     x_eq = np.array([0., 0., 0., 0.])
     x0 = x_eq+deviation
@@ -53,23 +54,41 @@ else:
     
     
 x_nl[:, 0] = x0
+x_lin_err[:, 0] = deviation
 
 theta, theta_dot, phi, phi_dot = x0[0], x0[1], x0[2], x0[3]
 
 calc_u_count = int(params["SamplingTime"] / dt)
+# Constraint matrices for Xf 
+Ax = np.zeros((2,4))
+Ax[0,0] = 0
+Ax[1,0] = 0
+gx = 0.3 * np.ones((2))
 
+Au = np.zeros((2,1))
+Au[0,0] = 1
+Au[1,0] = -1 
+gu= 0.5 * np.ones((2))
+
+A_con, g_con = Controller.ComputeXfineq(Ax, Au, gx, gu)
 
 for i in range(num_steps):
     if i % calc_u_count == 0:
-        error = x_nl[:, i] - x_eq
-        tau = Controllers.mpc(error)[0]
-        u.append(tau)
-        #x[:,i+1], y[:,i] = plant.forward_discreet_linear(x[:,i], tau)
+        k = i // calc_u_count
+        error_nl = x_nl[:, i] - x_eq
+        tau_nl = Controller.mpc(error_nl, A_con, g_con)[0]
+        tau_lin = Controller.mpc(x_lin_err[:,k], A_con, g_con)[0]
+        tau_lin_vec = np.array([[tau_lin]])
+        u_nl.append(tau_nl)
+        u_lin.append(tau_lin)
+        
+        x_lin_err[:,[k+1]], y_lin_err[:,[k]] = plant.forward_discreet_linear(x_lin_err[:,[k]], tau_lin_vec)
     
     # Non linear Model
-    theta, theta_dot, phi, phi_dot = plant.next_step_nonlinear(theta, theta_dot, phi, phi_dot, tau, dt)
+    theta, theta_dot, phi, phi_dot = plant.next_step_nonlinear(theta, theta_dot, phi, phi_dot, tau_nl, dt)
     x_nl[:, i+1] = [theta, theta_dot, phi, phi_dot]
-u = np.array(u)
+u_nl = np.array(u_nl)
+u_lin = np.array(u_lin)
 fig, ax = plt.subplots(figsize=(6, 6))
 ax.set_aspect('equal')
 ax.grid(True)
@@ -115,19 +134,19 @@ fig.suptitle('Linear vs Nonlinear - MPC Response')
 
 for i, ax in enumerate(axes.flat[:4]):
     ax.plot(t, x_nl[i], linestyle='--', label='Nonlinear')
+    ax.stairs(x_lin_err[i,:-1] + x_eq[i],t_d, linestyle='-', label='Linear')
     ax.set_ylabel(labels[i])
     ax.set_title(titles[i])
     ax.set_xlabel('Time (s)')
     ax.legend()
     ax.grid(True)
-
-axes[2, 0].stairs(u, t_d, color='tab:red', label='Torque')
+axes[0, 0].set_ylim([x_eq[0]-0.15,x_eq[0]+0.15])
+axes[2, 0].stairs(u_nl, t_d, color='tab:red', label='Torque NL')
+axes[2, 0].stairs(u_lin, t_d, color='tab:blue', label='Torque Lin')
 axes[2, 0].set_ylabel('τ (N·m)')
 axes[2, 0].set_title('Control torque')
 axes[2, 0].set_xlabel('Time (s)')
 axes[2, 0].legend()
 axes[2, 0].grid(True)
-
-axes[2, 1].set_visible(False)
 plt.tight_layout()
 plt.show()
