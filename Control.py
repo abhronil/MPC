@@ -37,13 +37,12 @@ class Controllers:
         self.dimd = 1
         self.yref = yref
         self.A_aug, self.B_aug, self.C_aug = self.augment_matrix()
-        self.Q_kf = np.diag([1e-6, 1e-6, 1e-6, 1e-6, 1e-6])
-        self.L,_,_ = ct.dlqe(self.A_aug, np.eye(self.dimx+self.dimd),  self.C_aug, self.Q_kf, 1e-6*np.eye(2))
-        print(self.L.shape)
+        self.Q_kf = np.diag([1e-6,1e-3, 1e-6, 1e-3, 1e-7])
+        self.L,_,_ = ct.dlqe(self.A_aug, np.eye(self.dimx+self.dimd),  self.C_aug, self.Q_kf, 1e-8*np.eye(2))
 
     def forward_real(self, x, u, d = None):
         if d is not None:
-            v = np.random.multivariate_normal(np.zeros(2), 1e-6*np.eye(2))
+            v = np.random.multivariate_normal(np.zeros(2), 1e-8*np.eye(2))
         else:
             d = np.zeros((1,1))
             v = np.zeros((2,1))
@@ -189,7 +188,7 @@ class Controllers:
         constraints+= [(np.eye(self.dimx)-self.A)@xref-self.B@uref == self.distB@dist]
         constraints+= [self.C[0:1,:]@xref == self.yref-self.distC[0:1,:]@dist]
         # Constraints
-        constraints+= [uref <=0.5, -uref <=0.5]
+        constraints+= [uref <=1., -uref <=1.]
         constraints+= [xref[0] <=0.3, -xref[0]<=0.3]
         cost = cp.quad_form(uref, np.eye(self.dimu))
         problem = cp.Problem(cp.Minimize(cost), constraints)
@@ -217,8 +216,8 @@ class Controllers:
             constraints += [x[:,i+1] == self.forward_MPC(x[:,i], u[:,i], dist)[0]]
             # SET CONSTRAINTS TO 0 FOR TESTING
             # INPUT CONSTRAINTS
-            constraints += [u[:,i] <= 0.5]
-            constraints += [u[:,i]>= -0.5]
+            constraints += [u[:,i] <= 1.]
+            constraints += [u[:,i]>= -1.]
 
             # STATE CONSTRAINTS 
             constraints += [x[0,i] <= 0.3]

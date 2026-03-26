@@ -28,9 +28,9 @@ class SystemModel:
         phi_dot_dot = ((tau - self.b2 * phi_dot) / self.Jw) - theta_dot_dot
         return [theta_dot, theta_dot_dot, phi_dot, phi_dot_dot]
     
-    def next_step_nonlinear(self, theta, theta_dot, phi, phi_dot, tau, dt):
+    def next_step_nonlinear(self, theta, theta_dot, phi, phi_dot, tau, dt, d = 0):
         x_plus_one = solve_ivp(
-            lambda t, y: self.System_dynamics(y[0], y[1], y[2], y[3], tau), 
+            lambda t, y: self.System_dynamics(y[0], y[1], y[2], y[3], tau + d), 
             [0, dt], 
             [theta, theta_dot, phi, phi_dot],
             method='RK45'
