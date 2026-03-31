@@ -21,7 +21,7 @@ A_d, B_d = plant.ZeroOrderHold(params['SamplingTime'])
 Q_val = np.array([50, 0.01, 0.01, 0.01])
 Q = np.diag(Q_val)
 R = 100
-N = 20
+N = 5
 yref = np.array([0])
 Controller = Controllers(A_d, B_d, C, Q, R, N, yref)
 
@@ -54,6 +54,48 @@ u_lin = []
 
 x_nl = np.zeros((4, num_steps + 1))
 deviation = np.array([0.0, 0, -0.0, 0.0])
+
+
+calc_u_count = int(params["SamplingTime"] / dt)
+# Constraint matrices for Xf 
+Ax = np.array([
+    [ 1,  0,  0,  0],  
+    [-1,  0,  0,  0],  
+    [ 0,  1,  0,  0],  
+    [ 0, -1,  0,  0],  
+    [ 0,  0,  1,  0],  
+    [ 0,  0, -1,  0],  
+    [ 0,  0,  0,  1],  
+    [ 0,  0,  0, -1]   
+])
+gx = 0.3 * np.ones((2))
+gx = np.hstack((gx, 1000*np.ones(6)))
+
+
+Au = np.zeros((2,1))
+Au[0,0] = 1
+Au[1,0] = -1 
+gu= 0.5 * np.ones((2))
+
+A_con, g_con = Controller.ComputeXfineq(Ax, Au, gx, gu)
+
+P, gamma = Controller.computeXn(Ax, Au, gx, gu)
+
+deviation_max = Controller.Calculate_worst_state(P, gamma)
+print(f"Maximum allowed deviation on the pendulum angle: {deviation_max}")
+deviation = np.array([0.0,0,0,0])
+
+try:
+    Check_ineq = P @ deviation
+    if not np.all(Check_ineq <= gamma):
+        raise ValueError(f"Deviation {deviation} is outside the Region of Attraction!")
+    print("State is safe. Proceeding with MPC...")
+except ValueError as e:
+    print(f"Deviation is too large for feasible solution")
+    print(f"Setting the maximum deviation as the initial state")
+    deviation = deviation_max
+    
+d = np.array([[-0.1]])
 if params['Theta_eq'] == 0:
     x_eq = np.array([0., 0., 0., 0.])
     x0 = x_eq+deviation
@@ -68,32 +110,16 @@ x_obs[:,0] = deviation
 x_obs_nl[:,0] = deviation
 
 theta, theta_dot, phi, phi_dot = x0[0], x0[1], x0[2], x0[3]
-
-calc_u_count = int(params["SamplingTime"] / dt)
-# Constraint matrices for Xf 
-Ax = np.zeros((2,4))
-Ax[0,0] = 0
-Ax[1,0] = 0
-gx = 0.3 * np.ones((2))
-
-Au = np.zeros((2,1))
-Au[0,0] = 1
-Au[1,0] = -1 
-gu= 1. * np.ones((2))
-
-A_con, g_con = Controller.ComputeXfineq(Ax, Au, gx, gu)
-d = np.array([[-0.1]])
-
 #print(x_target, u_target)
 y_nl = np.array([[deviation[0]],[deviation[2]]])
 for i in range(num_steps):
     if i % calc_u_count == 0:
         k = i // calc_u_count
         if k == num_steps_dis//2:
-            d = np.array([[0.1]])
+            d = np.array([[0.01]])
         error_nl = x_obs_nl[:, k]
-        tau_nl = Controller.mpc(error_nl, A_con, g_con, dist=d_nl[:,[k]])[0]  
-        tau_lin = Controller.mpc(x_obs[:,k], A_con, g_con, dist=d_lin[:,[k]])[0]
+        tau_nl = Controller.mpc(error_nl,Ax, gx, Au, gu, A_con, g_con, dist=d_nl[:,[k]])[0]  
+        tau_lin = Controller.mpc(x_obs[:,k],Ax, gx, Au, gu, A_con, g_con, dist=d_lin[:,[k]])[0]
         tau_lin_vec = np.array([[tau_lin]])
         u_nl.append(tau_nl)
         u_lin.append(tau_lin)
@@ -191,7 +217,7 @@ u_lin = np.array(u_lin)
 """
 fig, ax = plt.subplots(figsize=(6, 6))
 ax.set_aspect('equal')
-ax.grid(True)
+ax.grid(False)
 
 
 L = params['lp'] + params['lw']

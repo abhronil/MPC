@@ -75,7 +75,7 @@ class Controllers:
         Ft = F.copy() 
         A_inf = constraintsA.copy()
         b_inf = constraintsb.copy()
-        dim_con = Ax.shape[0]
+        dim_con = constraintsA.shape[0]
         # Time step
         for t in range(100):
             # Propogate constraints to next state
@@ -97,6 +97,8 @@ class Controllers:
             b_inf = np.hstack((b_inf, constraintsb))
             # Propagate dynamics
             Ft = F @ Ft
+            
+        _,A_inf, b_inf,_,_ = self.remove_redundant_constraints(A_inf, b_inf)
         return A_inf, b_inf    
     def ComputeXfellipse(self, Ax, Au, bx, bu, ax):
         
@@ -188,7 +190,7 @@ class Controllers:
         constraints+= [(np.eye(self.dimx)-self.A)@xref-self.B@uref == self.distB@dist]
         constraints+= [self.C[0:1,:]@xref == self.yref-self.distC[0:1,:]@dist]
         # Constraints
-        constraints+= [uref <=1., -uref <=1.]
+        constraints+= [uref <=.5, -uref <=0.5]
         constraints+= [xref[0] <=0.3, -xref[0]<=0.3]
         cost = cp.quad_form(uref, np.eye(self.dimu))
         problem = cp.Problem(cp.Minimize(cost), constraints)
@@ -199,7 +201,7 @@ class Controllers:
             print("Could not find a reference to reject the disturbance")
         return np.squeeze(x_target), np.squeeze(u_target)
     
-    def mpc(self, x0, TermSet = None, TermRHS = None, dist = None):
+    def mpc(self, x0, Ax, gx, Au, gu, TermSet = None, TermRHS = None, dist = None):
         x = cp.Variable((self.dimx, self.Horizon+1))
         u = cp.Variable((self.dimu, self.Horizon))
         cost = 0
@@ -216,12 +218,11 @@ class Controllers:
             constraints += [x[:,i+1] == self.forward_MPC(x[:,i], u[:,i], dist)[0]]
             # SET CONSTRAINTS TO 0 FOR TESTING
             # INPUT CONSTRAINTS
-            constraints += [u[:,i] <= 1.]
-            constraints += [u[:,i]>= -1.]
+            constraints += [Au@u[:,i] <= gu]
 
             # STATE CONSTRAINTS 
-            constraints += [x[0,i] <= 0.3]
-            constraints += [x[0,i]>=-0.3]
+            constraints += [Ax@x[:,i] <= gx]
+            
             
             cost += 0.5*(cp.quad_form(x[:,i]-x_target, self.Q) + cp.square(u[:,i]-u_target)* self.R)
         
@@ -241,18 +242,174 @@ class Controllers:
             return 0
         input = u.value[:,0]     
         return input
-    
-    # Add this to Dynamics Class
-    def ZeroOrderHold(self, SamplingTime):
-        # Trick from first tutorial in the MPC homework sessions 
-        AB = np.zeros((self.dimx+self.dimu, self.dimx + self.dimu))
-        AB[:self.dimx,:self.dimx] = self.A
-        AB[:self.dimx,self.dimx:] = self.B
-        exp = expm(AB*SamplingTime)
+    # ADDED FROM WEEK_04_LQR HOMEWORK EXAMPLE. Tweeked the 
+    def remove_zero_rows(self,A, b):
+        """
+        Removes rows of A that are all zeros and the corresponding elements in b.
+        """
+        keeprows = np.any(A, axis=1)
+        A = A[keeprows, :]
+        b = b[keeprows]
         
-        Adisc = exp[:self.dimx, :self.dimx]
-        Bdisc = exp[:self.dimx, self.dimx:]
-        return Adisc, Bdisc
+        return A, b 
+    
+    def remove_redundant_constraints(self,A, b, x0=None, tol=None):
+        """
+        Removes redundant constraints for the polyhedron Ax <= b.
+
+        """
+        # A = np.asarray(A)
+        # b = np.asarray(b).flatten()
+        
+        if A.shape[0] != b.shape[0]:
+            raise ValueError("A and b must have the same number of rows!")
+        
+        if tol is None:
+            tol = 1e-8 * max(1, np.linalg.norm(b) / len(b))
+        elif tol <= 0:
+            raise ValueError("tol must be strictly positive!")
+        
+        # Remove zero rows in A
+        Anorms = np.max(np.abs(A), axis=1)
+        badrows = (Anorms == 0)
+        if np.any(b[badrows] < 0):
+            raise ValueError("A has infeasible trivial rows.")
+            
+        A = A[~badrows, :]
+        b = b[~badrows]
+        goodrows = np.concatenate(([0], np.where(~badrows)[0]))
+            
+        # Find an interior point if not supplied
+        if x0 is None:
+            if np.all(b > 0):
+                x0 = np.zeros(A.shape[1])
+            else:
+                raise ValueError("Must supply an interior point!")
+        else:
+            x0 = np.asarray(x0).flatten()
+            if x0.shape[0] != A.shape[1]:
+                raise ValueError("x0 must have as many entries as A has columns.")
+            if np.any(A @ x0 >= b - tol):
+                raise ValueError("x0 is not in the strict interior of Ax <= b!")
+                
+        # Compute convex hull after projection
+        btilde = b - A @ x0
+        if np.any(btilde <= 0):
+            print("Warning: Shifted b is not strictly positive. Convex hull may fail.")
+        
+        Atilde = np.vstack((np.zeros((1, A.shape[1])), A / btilde[:, np.newaxis]))
+        
+        hull = ConvexHull(Atilde)    
+        u = np.unique(hull.vertices)    
+        nr = goodrows[u]    
+        h = goodrows[hull.simplices]
+        
+        # if nr[0] == 0:
+        #     nr = nr[1:]
+            
+        Anr = A[nr, :]
+        bnr = b[nr]
+        
+        return nr, Anr, bnr, h, x0
+    
+    def computeX1(self,G, H, psi, P, gamma):
+        '''
+        Computes the feasible set X_1 for the system x^+ = Ax + Bu subject to constraints Gx + Hu <= psi and x^+ \in Xf.
+        '''
+        G_ = np.vstack((G, P @ self.A))
+        H_ = np.vstack((H, P @ self.B))
+        psi_ = np.hstack((psi, -gamma))
+        
+        psi_ = np.expand_dims(psi_, axis=1)
+        
+        A, b = self.proj_input(G_, H_, psi_)
+        b = -b.squeeze()
+        
+        return A, b
+    def proj_input(self,G, H, psi):
+        G_i = np.hstack((G, H[:,:-1]))
+        H_i = np.expand_dims(H[:,-1], axis=1)
+        psi_i = psi
+
+        for i in range(self.dimu, 0, -1):
+            P_i, gamma_i = self.proj_single_input(G_i, H_i, psi_i)
+            # P_i, gamma_i = fm_elim(G_i, H_i, psi_i)
+
+            G_i = P_i[:,:-1]
+            H_i = np.expand_dims(P_i[:,-1], axis=1)
+            psi_i = gamma_i
+
+        return P_i, gamma_i
+    def proj_single_input(self,G, H, psi):
+        # Define the sets by basing on the i-th column of H
+    
+        I_0 = np.where(H == 0)[0]
+        I_p = np.where(H > 0)[0]
+        I_m = np.where(H < 0)[0]
+
+        # Set the row of matrix [P gamma]
+
+        # Define C
+        C = np.hstack((G, psi))
+
+        # Define row by row [P gamma]
+        aux = []
+        for i in I_0:
+            aux.append(C[i])
+
+        for i in I_p:
+            for j in I_m:
+                aux.append(H[i]*C[j] - H[j]*C[i])
+
+        # Return the desired matrix/vector
+        aux = np.array(aux)
+        P = aux[:,:-1]
+        gamma = aux[:,[-1]]
+        
+        P, gamma = self.remove_zero_rows(P, gamma)
+
+        return P, gamma 
+    
+    def computeXn(self, Ax, Au, gx, gu):
+        
+        A_con, g_con = self.ComputeXfineq(Ax, Au, gx, gu)
+        
+        _, A_inf, b_inf, _, _ = self.remove_redundant_constraints(A_con, g_con)
+    
+        GH = block_diag(Ax, Au)
+        G = GH[:, :self.dimx]
+        H = GH[:, self.dimx:]
+        psi = -np.hstack((gx, gu))
+    
+        # Xns = [(A_inf_hist[-1], b_inf_hist[-1])]   
+        Xns = [(A_inf, b_inf)] 
+        
+        for _ in range(self.Horizon):
+            P, gamma = Xns[-1]
+            P, gamma = self.computeX1(G, H, psi, P, gamma)        
+            _, P, gamma, _, _ = self.remove_redundant_constraints(P, gamma)
+            Xns.append((P, gamma))
+        P, gamma = Xns[-1]
+        return P, gamma
+    
+    def Calculate_worst_state(self, P, gamma):
+        # This is to maximize the positive sum. Not the absolute sum. If I want to check for the absolute sum. Do 16 linprogs
+        x = cp.Variable(self.dimx)
+
+        
+        
+        constraints = [
+            P @ x <= gamma,
+            x[1] == 0,
+            x[2] == 0,
+            x[3] == 0
+        ]
+        
+        objective = cp.Maximize(x[0])
+        prob = cp.Problem(objective, constraints)
+        prob.solve(solver=cp.GLPK)
+        print(prob.status)
+        return x.value
     
 if __name__ == "__main__":
     # Setup matrices

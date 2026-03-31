@@ -4,6 +4,8 @@ import matplotlib.animation as animation
 from Model import SystemModel 
 from Control import Controllers
 import control as ct
+import quadprog
+import sys
 
 params = {
     'Jw': 0.005, 'Jp': 0.05, 
@@ -18,9 +20,9 @@ plant = SystemModel(params)
 
 A, B, C = plant.Linearised(params['Theta_eq'])
 A_d, B_d = plant.ZeroOrderHold(params['SamplingTime'])
-Q_val = np.array([5000, 0.01, 0.01, 0.01])
+Q_val = np.array([50, 0.1, 0.1, 0.1])
 Q = np.diag(Q_val)
-R = 1
+R = 100
 N = 5
 yref = np.array([0,0])
 Controller = Controllers(A_d, B_d, C, Q, R, N, yref)
@@ -34,6 +36,7 @@ if np.linalg.matrix_rank(Controllability) == 4:
 else:  
     print(f"Boohoo")
 
+
 dt = 0.01
 total_time = 10.0
 num_steps = int(total_time / dt)
@@ -44,26 +47,29 @@ u_nl = []
 u_lin = []
 
 x_nl = np.zeros((4, num_steps + 1))
-deviation = np.array([-0.2, 0.0, -0.0, 0.])
-if params['Theta_eq'] == 0:
-    x_eq = np.array([0., 0., 0., 0.])
-    x0 = x_eq+deviation
-else:
-    x_eq = np.array([np.pi, 0., 0., 0.])
-    x0 = x_eq+deviation
-    
-    
-x_nl[:, 0] = x0
-x_lin_err[:, 0] = deviation
 
-theta, theta_dot, phi, phi_dot = x0[0], x0[1], x0[2], x0[3]
 
 calc_u_count = int(params["SamplingTime"] / dt)
 # Constraint matrices for Xf 
-Ax = np.zeros((2,4))
-Ax[0,0] = 0
-Ax[1,0] = 0
+
+# Add large constraints on all the states just so the compute Xn can find a region always
+Ax = np.array([
+    [ 1,  0,  0,  0],  
+    [-1,  0,  0,  0],  
+    [ 0,  1,  0,  0],  
+    [ 0, -1,  0,  0],  
+    [ 0,  0,  1,  0],  
+    [ 0,  0, -1,  0],  
+    [ 0,  0,  0,  1],  
+    [ 0,  0,  0, -1]   
+])
+# Ax = np.array([
+#     [ 1,  0,  0,  0],  
+#     [-1,  0,  0,  0],  
+# ])
 gx = 0.3 * np.ones((2))
+gx = np.hstack((gx, 100*np.ones(6)))
+
 
 Au = np.zeros((2,1))
 Au[0,0] = 1
@@ -72,12 +78,47 @@ gu= 0.5 * np.ones((2))
 
 A_con, g_con = Controller.ComputeXfineq(Ax, Au, gx, gu)
 
+P, gamma = Controller.computeXn(Ax, Au, gx, gu)
+
+# Calculate worst positive sum of states still in the region of attraction 
+deviation_max = Controller.Calculate_worst_state(P, gamma)
+print(f"Maximum allowed deviation on the pendulum angle: {deviation_max}")
+deviation = np.array([0.2,0,0,0])
+
+try:
+    Check_ineq = P @ deviation
+    if not np.all(Check_ineq <= gamma):
+        raise ValueError(f"Deviation {deviation} is outside the Region of Attraction!")
+    print("State is safe. Proceeding with MPC...")
+except ValueError as e:
+    print(f"Deviation is too large for feasible solution")
+    print(f"Setting the maximum deviation as the initial state")
+    deviation = deviation_max
+
+if params['Theta_eq'] == 0:
+    x_eq = np.array([0., 0., 0., 0.])
+    x0 = x_eq+deviation
+else:
+    x_eq = np.array([np.pi, 0., 0., 0.])
+    x0 = x_eq+deviation
+    
+x_nl[:, 0] = x0
+x_lin_err[:, 0] = deviation
+
+theta, theta_dot, phi, phi_dot = x0[0], x0[1], x0[2], x0[3]
+# if np.all(Check_ineq <= gamma):
+#     print("Control admissible sequence is found")
+# else: 
+#     print("bing bong")
+    
+
 for i in range(num_steps):
     if i % calc_u_count == 0:
         k = i // calc_u_count
         error_nl = x_nl[:, i] - x_eq
-        tau_nl = Controller.mpc(error_nl, A_con, g_con)[0]
-        tau_lin = Controller.mpc(x_lin_err[:,k], A_con, g_con)[0]
+        
+        tau_lin = Controller.mpc(x_lin_err[:,k],Ax, gx, Au, gu, A_con, g_con)[0]
+        tau_nl = Controller.mpc(error_nl,Ax, gx, Au, gu, A_con, g_con)[0]
         tau_lin_vec = np.array([[tau_lin]])
         u_nl.append(tau_nl)
         u_lin.append(tau_lin)
