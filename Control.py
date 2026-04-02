@@ -37,12 +37,12 @@ class Controllers:
         self.dimd = 1
         self.yref = yref
         self.A_aug, self.B_aug, self.C_aug = self.augment_matrix()
-        self.Q_kf = np.diag([1e-6,1e-3, 1e-6, 1e-3, 1e-7])
-        self.L,_,_ = ct.dlqe(self.A_aug, np.eye(self.dimx+self.dimd),  self.C_aug, self.Q_kf, 1e-8*np.eye(2))
+        self.Q_kf = np.diag([1e-6,1e-4, 1e-3, 1e-3, 1e-5])
+        self.L,_,_ = ct.dlqe(self.A_aug, np.eye(self.dimx+self.dimd),  self.C_aug, self.Q_kf, 1e-6*np.eye(2))
 
     def forward_real(self, x, u, d = None):
         if d is not None:
-            v = np.random.multivariate_normal(np.zeros(2), 1e-8*np.eye(2))
+            v = np.random.multivariate_normal(np.zeros(2), 1e-6*np.eye(2))
         else:
             d = np.zeros((1,1))
             v = np.zeros((2,1))
@@ -416,11 +416,8 @@ class Controllers:
         return P, gamma
     
     def Calculate_worst_state(self, P, gamma):
-        # This is to maximize the positive sum. Not the absolute sum. If I want to check for the absolute sum. Do 16 linprogs
         x = cp.Variable(self.dimx)
 
-        
-        
         constraints = [
             P @ x <= gamma,
             x[1] == 0,

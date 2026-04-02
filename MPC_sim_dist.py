@@ -103,11 +103,12 @@ else:
     x_eq = np.array([np.pi, 0., 0., 0.])
     x0 = x_eq+deviation
     
-    
+Initial_deviation_err = np.array([0.00, -0.010, 0,0.01])
+
 x_nl[:, 0] = x0
 x_lin_err[:, 0] = deviation
-x_obs[:,0] = deviation
-x_obs_nl[:,0] = deviation
+x_obs[:,0] = deviation + Initial_deviation_err
+x_obs_nl[:,0] = deviation + Initial_deviation_err
 
 theta, theta_dot, phi, phi_dot = x0[0], x0[1], x0[2], x0[3]
 #print(x_target, u_target)
@@ -116,7 +117,7 @@ for i in range(num_steps):
     if i % calc_u_count == 0:
         k = i // calc_u_count
         if k == num_steps_dis//2:
-            d = np.array([[0.01]])
+            d = np.array([[0.00]])
         error_nl = x_obs_nl[:, k]
         tau_nl,_,_ = Controller.mpc(error_nl,Ax, gx, Au, gu, A_con, g_con, dist=d_nl[:,[k]])  
         tau_nl = tau_nl[0]
@@ -137,7 +138,9 @@ for i in range(num_steps):
     x_nl[:, i+1] = [theta, theta_dot, phi, phi_dot]
     y_nl = np.array([[theta],[phi]]) - np.array([[np.pi],[0]]) + np.random.multivariate_normal(np.zeros(2), 1e-6*np.eye(2)).reshape(-1,1)
 
-
+x_lin_err[0] += np.pi
+x_obs[0] += np.pi
+x_obs_nl[0]+=np.pi
 t = np.arange(num_steps + 1) * dt
 t_d = np.arange(num_steps_dis + 1) * params['SamplingTime']
 u_lin = np.array(u_lin)
@@ -156,9 +159,9 @@ for i in range(4):
     axes[i, 0].set_ylabel(labels[i])
     axes[i, 0].set_title(titles[i])
     axes[i, 0].set_xlabel('Time (s)')
-    axes[i, 0].legend()
+    #axes[i, 0].legend()
     axes[i, 0].grid(True)
-
+axes[0,0].set_ylim([np.pi-0.3, np.pi+0.3])
 axes[0, 1].stairs(d_lin[0, :-1], t_d, color='tab:orange', label='Estimated disturbance')
 axes[0, 1].stairs(d_nl[0, :-1], t_d, color='tab:orange', label='Estimated disturbance NL')
 axes[0, 1].axhline(d[0, 0], color='k', linestyle='--', label=f'True disturbance ({d[0,0]})')

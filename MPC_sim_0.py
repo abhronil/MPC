@@ -20,9 +20,9 @@ plant = SystemModel(params)
 
 A, B, C = plant.Linearised(params['Theta_eq'])
 A_d, B_d = plant.ZeroOrderHold(params['SamplingTime'])
-Q_val = np.array([5000, 0.1, 0.1, 0.1])
+Q_val = np.array([50, 0.1, 0.1, 0.1])
 Q = np.diag(Q_val)
-R = 0.001
+R = 10
 N = 5
 yref = np.array([0,0])
 Controller = Controllers(A_d, B_d, C, Q, R, N, yref)
