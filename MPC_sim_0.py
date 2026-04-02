@@ -20,9 +20,9 @@ plant = SystemModel(params)
 
 A, B, C = plant.Linearised(params['Theta_eq'])
 A_d, B_d = plant.ZeroOrderHold(params['SamplingTime'])
-Q_val = np.array([50, 0.1, 0.1, 0.1])
+Q_val = np.array([5000, 0.1, 0.1, 0.1])
 Q = np.diag(Q_val)
-R = 100
+R = 0.001
 N = 5
 yref = np.array([0,0])
 Controller = Controllers(A_d, B_d, C, Q, R, N, yref)
@@ -47,6 +47,9 @@ u_nl = []
 u_lin = []
 
 x_nl = np.zeros((4, num_steps + 1))
+
+VF_diff = np.zeros(num_steps_dis)
+stage_cost = np.zeros(num_steps_dis)
 
 
 calc_u_count = int(params["SamplingTime"] / dt)
@@ -83,7 +86,7 @@ P, gamma = Controller.computeXn(Ax, Au, gx, gu)
 # Calculate worst positive sum of states still in the region of attraction 
 deviation_max = Controller.Calculate_worst_state(P, gamma)
 print(f"Maximum allowed deviation on the pendulum angle: {deviation_max}")
-deviation = np.array([0.2,0,0,0])
+deviation = np.array([0.3,0,0,0])
 
 try:
     Check_ineq = P @ deviation
@@ -117,14 +120,23 @@ for i in range(num_steps):
         k = i // calc_u_count
         error_nl = x_nl[:, i] - x_eq
         
-        tau_lin = Controller.mpc(x_lin_err[:,k],Ax, gx, Au, gu, A_con, g_con)[0]
-        tau_nl = Controller.mpc(error_nl,Ax, gx, Au, gu, A_con, g_con)[0]
+        tau_lin, VF_diff[k], stage_cost[k] = Controller.mpc(x_lin_err[:,k],Ax, gx, Au, gu, A_con, g_con)
+        tau_lin = tau_lin[0]
+        tau_nl,_,_ = Controller.mpc(error_nl,Ax, gx, Au, gu, A_con, g_con)
+        tau_nl = tau_nl[0]
         tau_lin_vec = np.array([[tau_lin]])
         u_nl.append(tau_nl)
         u_lin.append(tau_lin)
         
         x_lin_err[:,[k+1]], y_lin_err[:,[k]] = plant.forward_discreet_linear(x_lin_err[:,[k]], tau_lin_vec)
-    
+        # Stability Assumptions
+        # Vf_future = Controller.CalcTerminalCost(x_lin_err[:,[k+1]])
+        # Vf_now = Controller.CalcTerminalCost(x_lin_err[:,[k]])
+        # stageC = Controller.CalcStageCost(x_lin_err[:,[k]], tau_lin)
+        # Calculate this IN THE MPC LOOP. IT HAS TO BE THE FINAL STATE IN THE HORIZON STUPID 
+        
+        
+        
     # Non linear Model
     theta, theta_dot, phi, phi_dot = plant.next_step_nonlinear(theta, theta_dot, phi, phi_dot, tau_nl, dt)
     x_nl[:, i+1] = [theta, theta_dot, phi, phi_dot]
@@ -189,5 +201,13 @@ axes[2, 0].set_title('Control torque')
 axes[2, 0].set_xlabel('Time (s)')
 axes[2, 0].legend()
 axes[2, 0].grid(True)
+
+axes[2,1].stairs(VF_diff+stage_cost, t_d, color='tab:red', label='Vf(x+)-Vf(x)+l(x,u)==0')
+axes[2, 1].set_ylabel('Value')
+axes[2, 1].set_title('Stability assumption')
+axes[2, 1].set_xlabel('Time (s)')
+axes[2, 1].legend()
+axes[2, 1].grid(True)
+axes[2, 1].set_ylim([0.0001,-0.0001])
 plt.tight_layout()
 plt.show()

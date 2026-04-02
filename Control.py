@@ -170,9 +170,9 @@ class Controllers:
         observ = ct.obsv(A_aug, C_aug)
         r = np.linalg.matrix_rank(observ)
         if r == self.dimd+self.dimx:
-            print("Ho ho ho")
+            print("System is Observable")
         else: 
-            print("MMmmm No")
+            print("System is Unobservable")
         
         #self.L = ct.place(A_aug.T, C_aug.T,[0.2,0.25,0.7,0.3,0.31]).T
         return A_aug, B_aug, C_aug
@@ -233,16 +233,39 @@ class Controllers:
         
         #TERMINAL COST
         cost += 0.5*(cp.quad_form(x[:,-1]-x_target, self.P))
-        
         problem = cp.Problem(cp.Minimize(cost), constraints)
-
         problem.solve()
         if problem.status != "optimal":
             print(f"Infeasible")
-            return 0
-        input = u.value[:,0]     
-        return input
-    # ADDED FROM WEEK_04_LQR HOMEWORK EXAMPLE. Tweeked the 
+            return None,None,None
+        x_n = x.value[:,-1]
+        
+        Term_diff, ctg = self.Calc_Decreasing_Input(x_n)
+        
+        input = u.value[:,0]  
+        
+        return input, Term_diff, ctg
+    
+    def Calc_Decreasing_Input(self, x):
+        Term_cost_present = self.CalcTerminalCost(x) 
+        input_decrease = -self.K @x
+        
+        x_fut_r, _ = self.forward_MPC(x, input_decrease)
+        Term_cost_fut_r = self.CalcTerminalCost(x_fut_r)
+
+        ctg_r = self.CalcStageCost(x, input_decrease)
+        
+        term_diff = Term_cost_fut_r-Term_cost_present
+        return term_diff, ctg_r
+    # Stability assumptions Code
+    def CalcTerminalCost(self, x):
+        Vf = 0.5*x.T@self.P@x
+        return Vf
+    def CalcStageCost(self,x,u):
+        stage_c = 0.5*(x.T@self.Q@x) + 0.5*self.R * u**2
+
+        return stage_c[0]
+    # ADDED FROM WEEK_04_LQR HOMEWORK EXAMPLE. Tweeked it a bit
     def remove_zero_rows(self,A, b):
         """
         Removes rows of A that are all zeros and the corresponding elements in b.
@@ -410,6 +433,8 @@ class Controllers:
         prob.solve(solver=cp.GLPK)
         print(prob.status)
         return x.value
+    
+    
     
 if __name__ == "__main__":
     # Setup matrices

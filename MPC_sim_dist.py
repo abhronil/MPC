@@ -118,8 +118,10 @@ for i in range(num_steps):
         if k == num_steps_dis//2:
             d = np.array([[0.01]])
         error_nl = x_obs_nl[:, k]
-        tau_nl = Controller.mpc(error_nl,Ax, gx, Au, gu, A_con, g_con, dist=d_nl[:,[k]])[0]  
-        tau_lin = Controller.mpc(x_obs[:,k],Ax, gx, Au, gu, A_con, g_con, dist=d_lin[:,[k]])[0]
+        tau_nl,_,_ = Controller.mpc(error_nl,Ax, gx, Au, gu, A_con, g_con, dist=d_nl[:,[k]])  
+        tau_nl = tau_nl[0]
+        tau_lin,_,_ = Controller.mpc(x_obs[:,k],Ax, gx, Au, gu, A_con, g_con, dist=d_lin[:,[k]])
+        tau_lin = tau_lin[0]
         tau_lin_vec = np.array([[tau_lin]])
         u_nl.append(tau_nl)
         u_lin.append(tau_lin)

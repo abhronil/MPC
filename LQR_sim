@@ -23,7 +23,7 @@ Q = np.diag(Q_val)
 R = 1000
 N = 5
 
-Controller = Controllers(A_d, B_d, C, Q, R, N)
+Controller = Controllers(A_d, B_d, C, Q, R, N, 0)
 
 omega_n = np.sqrt(plant.Jp / (plant.ml * plant.g))
 Sampling_time = 0.2/omega_n
