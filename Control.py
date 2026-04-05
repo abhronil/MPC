@@ -245,6 +245,11 @@ class Controllers:
         input = u.value[:,0]  
         
         return input, Term_diff, ctg
+
+     # LQR
+    def lqr(self, x0):
+        input = -self.K @ x0
+        return input
     
     def Calc_Decreasing_Input(self, x):
         Term_cost_present = self.CalcTerminalCost(x) 
