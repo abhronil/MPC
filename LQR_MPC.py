@@ -6,7 +6,15 @@ from Control import Controllers
 import control as ct
 import quadprog
 import sys
-
+plt.rcParams.update({
+    'font.size': 14,          # Base font size
+    'axes.titlesize': 18,     # Subplot title size
+    'axes.labelsize': 20,     # X/Y axis label size
+    'xtick.labelsize': 12,    # X axis tick labels (numbers)
+    'ytick.labelsize': 12,    # Y axis tick labels (numbers)
+    'legend.fontsize': 16,    # Legend text size
+    'figure.titlesize': 25    # Main figure title size
+})
 params = {
     'Jw': 0.005, 'Jp': 0.05, 
     'mp': 0.4, 'mw': 0.2, 
@@ -20,12 +28,18 @@ plant = SystemModel(params)
 
 A, B, C = plant.Linearised(params['Theta_eq'])
 A_d, B_d = plant.ZeroOrderHold(params['SamplingTime'])
-Q_val = 1e-6*np.array([1, 1, 1, 1])
+Q_val = 1e-4*np.array([1, 1, 1, 1])
 Q = np.diag(Q_val)
 R = 1
 N = 5
+
+
+Q_vallqr = 1e-8*np.array([1, 1, 1, 1])
+Q_LQR = Q
+R_LQR = R
 yref = np.array([0,0])
 Controller = Controllers(A_d, B_d, C, Q, R, N, yref)
+Controller_LQR = Controllers(A_d, B_d, C, Q_LQR, R_LQR, N, yref)
 
 omega_n = np.sqrt(plant.Jp / (plant.ml * plant.g))
 Sampling_time = 0.2/omega_n
@@ -45,6 +59,10 @@ x_lin_err = np.zeros((4,num_steps_dis+1))
 y_lin_err = np.zeros((2,num_steps_dis))
 u_nl = []
 u_lin = []
+# LQR
+x_LQR = np.zeros((4,num_steps_dis+1))
+y_LQR = np.zeros((2,num_steps_dis))
+u_LQR = []
 
 x_nl = np.zeros((4, num_steps + 1))
 
@@ -86,9 +104,11 @@ P, gamma = Controller.computeXn(Ax, Au, gx, gu)
 
 # Calculate worst positive sum of states still in the region of attraction 
 deviation_max = Controller.Calculate_worst_state(P, gamma)
+deviation_max_A = Controller.Calculate_worst_state(A_con, g_con)
 print(f"Maximum allowed deviation on the pendulum angle: {deviation_max}")
+print(f"Maximum allowed deviation on the pendulum angle 2: {deviation_max_A}")
 deviation = np.array([0.2, -0.1, 0.3, 1])
-
+deviation = np.array([0.13,0,0,0])
 try:
     Check_ineq = P @ deviation
     if not np.all(Check_ineq <= gamma):
@@ -108,6 +128,7 @@ else:
     
 x_nl[:, 0] = x0
 x_lin_err[:, 0] = deviation
+x_LQR[:,0] = deviation
 
 theta, theta_dot, phi, phi_dot = x0[0], x0[1], x0[2], x0[3]
 # if np.all(Check_ineq <= gamma):
@@ -122,6 +143,12 @@ for i in range(num_steps):
         error_nl = x_nl[:, i] - x_eq
         
         tau_lin, VF_diff[k], stage_cost[k] = Controller.mpc(x_lin_err[:,k],Ax, gx, Au, gu, A_con, g_con)
+        
+        tau_LQR = Controller_LQR.lqr(x_LQR[:,k])
+        tau_LQR = tau_LQR[0]
+        tau_LQR_Vec = np.array([[tau_LQR]])
+        u_LQR.append(tau_LQR)
+        
         tau_lin = tau_lin[0]
         tau_nl,_,_ = Controller.mpc(error_nl,Ax, gx, Au, gu, A_con, g_con)
         tau_nl = tau_nl[0]
@@ -130,6 +157,8 @@ for i in range(num_steps):
         u_lin.append(tau_lin)
         
         x_lin_err[:,[k+1]], y_lin_err[:,[k]] = plant.forward_discreet_linear(x_lin_err[:,[k]], tau_lin_vec)
+        
+        x_LQR[:,[k+1]], y_LQR[:,[k]] = plant.forward_discreet_linear(x_LQR[:,[k]], tau_LQR_Vec)
         # Stability Assumptions
         # Vf_future = Controller.CalcTerminalCost(x_lin_err[:,[k+1]])
         # Vf_now = Controller.CalcTerminalCost(x_lin_err[:,[k]])
@@ -183,32 +212,37 @@ t = np.arange(num_steps + 1) * dt
 t_d = np.arange(num_steps_dis+1) * params['SamplingTime']
 labels = ['θ (rad)', 'θ̇ (rad/s)', 'φ (rad)', 'φ̇ (rad/s)']
 titles = ['Pendulum angle', 'Pendulum angular velocity', 'Wheel angle', 'Wheel angular velocity']
-fig, axes = plt.subplots(3, 2, figsize=(10, 9))
-fig.suptitle('Linear vs Nonlinear - MPC Response')
+fig, axes = plt.subplots(3, 1, figsize=(10, 10))
+fig.suptitle('Linear MPC vs LQR Response')
 
-for i, ax in enumerate(axes.flat[:4]):
-    ax.plot(t, x_nl[i], linestyle='--', label='Nonlinear')
-    ax.stairs(x_lin_err[i,:-1] + x_eq[i],t_d, linestyle='-', label='Linear')
-    ax.set_ylabel(labels[i])
-    ax.set_title(titles[i])
-    ax.set_xlabel('Time (s)')
-    ax.legend()
-    ax.grid(True)
-axes[0, 0].set_ylim([x_eq[0]-0.15,x_eq[0]+0.15])
-axes[2, 0].stairs(u_nl, t_d, color='tab:red', label='Torque NL')
-axes[2, 0].stairs(u_lin, t_d, color='tab:blue', label='Torque Lin')
-axes[2, 0].set_ylabel('τ (N·m)')
-axes[2, 0].set_title('Control torque')
-axes[2, 0].set_xlabel('Time (s)')
-axes[2, 0].legend()
-axes[2, 0].grid(True)
+# 1. Pendulum angle (State index 0)
+axes[0].stairs(x_lin_err[0, :-1] + x_eq[0], t_d, color='tab:blue', label='Linear MPC', linewidth=2)
+axes[0].stairs(x_LQR[0, :-1] + x_eq[0], t_d, color='tab:green', label='LQR', linewidth=2, linestyle='--')
+axes[0].set_ylabel('θ (rad)')
 
-axes[2,1].stairs(VF_diff+stage_cost, t_d, color='tab:red', label='Vf(x+)-Vf(x)+l(x,u)==0')
-axes[2, 1].set_ylabel('Value')
-axes[2, 1].set_title('Stability assumption')
-axes[2, 1].set_xlabel('Time (s)')
-axes[2, 1].legend()
-axes[2, 1].grid(True)
-axes[2, 1].set_ylim([-0.0001,0.0001])
+axes[0].set_ylim([x_eq[0] - 0.3, x_eq[0] + 0.3])
+axes[0].legend(loc='upper right')
+axes[0].grid(True)
+axes[0].set_xlim([0,10])
+
+# 2. Wheel angle (State index 2)
+axes[1].stairs(x_lin_err[2, :-1] + x_eq[2], t_d, color='tab:blue', label='Linear MPC', linewidth=2)
+axes[1].stairs(x_LQR[2, :-1] + x_eq[2], t_d, color='tab:green', label='LQR', linewidth=2, linestyle='--')
+axes[1].set_ylabel('φ (rad)')
+
+axes[1].set_xlim([0,10])
+axes[1].legend(loc='upper right')
+axes[1].grid(True)
+
+# 3. Control torque
+axes[2].stairs(u_lin, t_d, color='tab:blue', label='Torque MPC', linewidth=2)
+axes[2].stairs(u_LQR, t_d, color='tab:green', label='Torque LQR', linewidth=2, linestyle='--')
+axes[2].set_ylabel('τ (N·m)')
+
+axes[2].set_xlabel('Time (s)')
+axes[2].set_xlim([0,10])
+axes[2].legend(loc='upper right')
+axes[2].grid(True)
+
 plt.tight_layout()
 plt.show()

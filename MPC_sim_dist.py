@@ -5,6 +5,16 @@ from Model import SystemModel
 from Control import Controllers
 import control as ct
 
+plt.rcParams.update({
+    'font.size': 14,          # Base font size
+    'axes.titlesize': 18,     # Subplot title size
+    'axes.labelsize': 20,     # X/Y axis label size
+    'xtick.labelsize': 12,    # X axis tick labels (numbers)
+    'ytick.labelsize': 12,    # Y axis tick labels (numbers)
+    'legend.fontsize': 16,    # Legend text size
+    'figure.titlesize': 25    # Main figure title size
+})
+
 params = {
     'Jw': 0.005, 'Jp': 0.05, 
     'mp': 0.4, 'mw': 0.2, 
@@ -18,9 +28,9 @@ plant = SystemModel(params)
 
 A, B, C = plant.Linearised(params['Theta_eq'])
 A_d, B_d = plant.ZeroOrderHold(params['SamplingTime'])
-Q_val = np.array([50, 0.01, 0.01, 0.01])
+Q_val = 1e-6*np.array([1, 1, 1, 1])
 Q = np.diag(Q_val)
-R = 100
+R = 1
 N = 5
 yref = np.array([0])
 Controller = Controllers(A_d, B_d, C, Q, R, N, yref)
@@ -103,7 +113,7 @@ else:
     x_eq = np.array([np.pi, 0., 0., 0.])
     x0 = x_eq+deviation
     
-Initial_deviation_err = np.array([0.00, -0.010, 0,0.01])
+Initial_deviation_err = np.array([-0.05, -0.010, 0,0.01])
 
 x_nl[:, 0] = x0
 x_lin_err[:, 0] = deviation
@@ -145,57 +155,48 @@ t = np.arange(num_steps + 1) * dt
 t_d = np.arange(num_steps_dis + 1) * params['SamplingTime']
 u_lin = np.array(u_lin)
 
-fig, axes = plt.subplots(4, 2, figsize=(12, 14))
+fig, axes = plt.subplots(4, 1, figsize=(12, 24))
 fig.suptitle('Observer-based MPC Response')
 
-labels = ['θ error (rad)', 'θ̇ error (rad/s)', 'φ error (rad)', 'φ̇ error (rad/s)']
-titles = ['Pendulum angle error', 'Pendulum angular velocity error', 'Wheel angle error', 'Wheel angular velocity error']
+# --- Pendulum angle error ---
+# axes[0].stairs(x_lin_err[0, :-1], t_d, label='True State', linewidth=2)
+axes[0].plot(t, x_nl[0], label='True State', linewidth=2)
+# axes[0].stairs(x_obs[0, :-1], t_d, linestyle='--', label='Observed', linewidth=2)
+axes[0].set_ylabel('θ error (rad)')
 
-for i in range(4):
-    axes[i, 0].stairs(x_lin_err[i, :-1], t_d, label='True error')
-    axes[i, 0].stairs(x_obs_nl[i, :-1], t_d, label='Observed NL')
-    axes[i, 0].stairs(x_obs[i, :-1], t_d, linestyle='--', label='Observed')
-    axes[i, 0].plot(t, x_nl[i], label='NL Model')
-    axes[i, 0].set_ylabel(labels[i])
-    axes[i, 0].set_title(titles[i])
-    axes[i, 0].set_xlabel('Time (s)')
-    #axes[i, 0].legend()
-    axes[i, 0].grid(True)
-axes[0,0].set_ylim([np.pi-0.3, np.pi+0.3])
-axes[0, 1].stairs(d_lin[0, :-1], t_d, color='tab:orange', label='Estimated disturbance')
-axes[0, 1].stairs(d_nl[0, :-1], t_d, color='tab:orange', label='Estimated disturbance NL')
-axes[0, 1].axhline(d[0, 0], color='k', linestyle='--', label=f'True disturbance ({d[0,0]})')
-axes[0, 1].set_ylabel('d')
-axes[0, 1].set_title('Disturbance estimate')
-axes[0, 1].set_xlabel('Time (s)')
-axes[0, 1].legend()
-axes[0, 1].grid(True)
+axes[0].set_ylim([np.pi - 0.3, np.pi + 0.3]) 
+axes[0].legend(loc='upper right')
+axes[0].grid(True)
+axes[0].set_xlim([0,10])
 
-axes[1, 1].stairs(u_lin, t_d, color='tab:red', label='Control torque')
-axes[1, 1].stairs(u_nl, t_d, color='tab:blue', label='Control torque nl')
-axes[1, 1].set_ylabel('τ (N·m)')
-axes[1, 1].set_title('Control torque')
-axes[1, 1].set_xlabel('Time (s)')
-axes[1, 1].legend()
-axes[1, 1].grid(True)
+# --- Wheel angle error ---
+# axes[1].stairs(x_lin_err[2, :-1], t_d, label='True State', linewidth=2)
+# axes[1].stairs(x_obs[2, :-1], t_d, linestyle='--', label='Observed', linewidth=2)
+axes[1].plot(t, x_nl[2], label='True State', linewidth=2)
+axes[1].set_ylabel('φ error (rad)')
+axes[1].legend(loc='upper right')
+axes[1].grid(True)
+axes[1].set_xlim([0,10])
+# --- Disturbance estimate ---
+axes[2].stairs(d_nl[0, :-1], t_d, color='tab:orange', label='Estimated disturbance', linewidth=2)
+axes[2].axhline(d[0, 0], color='k', linestyle='--', label=f'True dist 2 ({d[0,0]})', linewidth=2)
+axes[2].axhline(-0.1, color='k', linestyle='--', label=f'True dist 1 ({-0.1})', linewidth=2)
+axes[2].set_ylabel('d')
 
-axes[2, 1].stairs(y_lin_err[0, :], t_d, label='y1 (theta)')
-axes[2, 1].stairs(y_obs[0, :], t_d, linestyle='--', label='y1 observed')
-axes[2, 1].set_ylabel('y1')
-axes[2, 1].set_title('Output y1 (θ)')
-axes[2, 1].set_xlabel('Time (s)')
-axes[2, 1].legend()
-axes[2, 1].grid(True)
+axes[2].legend(loc='upper right')
+axes[2].grid(True)
+axes[2].set_xlim([0,10])
 
-axes[3, 1].stairs(y_lin_err[1, :], t_d, label='y2 (phi)')
-axes[3, 1].stairs(y_obs[1, :], t_d, linestyle='--', label='y2 observed')
-axes[3, 1].set_ylabel('y2')
-axes[3, 1].set_title('Output y2 (φ)')
-axes[3, 1].set_xlabel('Time (s)')
-axes[3, 1].legend()
-axes[3, 1].grid(True)
+# --- Control torque ---
+axes[3].stairs(u_nl, t_d, color='tab:red', label='Control torque', linewidth=2)
+axes[3].set_ylabel('τ (N·m)')
 
-plt.tight_layout()
+axes[3].set_xlabel('Time (s)')
+axes[3].legend(loc='upper right')
+axes[3].grid(True)
+axes[3].set_xlim([0,10])
+
+plt.tight_layout(pad=5)
 plt.show()
 
 
