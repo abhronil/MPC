@@ -5,7 +5,7 @@ from scipy.linalg import expm
 class SystemModel:
     def __init__(self, params):
         self.Jw = params['Jw']
-        self.Jp = params['Jp']
+        self.Jpp = params['Jp']
         self.mp = params['mp']
         self.mw = params['mw']
         self.lp = params['lp']
@@ -14,6 +14,7 @@ class SystemModel:
         self.b2 = params['b2']
         self.T = params["SamplingTime"]
         self.theta_eq = params['Theta_eq']
+        self.Jp = params['Jp'] + params['mw'] * params['lw']**2 + params['mp'] * params['lp']**2
         self.g = 9.81
         self.A, self.B, self.C = self.Linearised(theta_eq=self.theta_eq)
         self.dimx = self.A.shape[0]

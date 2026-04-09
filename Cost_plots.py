@@ -6,7 +6,7 @@ import quadprog
 
 # System parameters
 params = {
-    'Jw': 0.005, 'Jp': 0.05,
+    'Jw': 0.0025, 'Jp': 0.05,
     'mp': 0.4, 'mw': 0.2,
     'lp': 0.3, 'lw': 0.3,
     'b1': 0.01, 'b2': 0.005,
@@ -24,7 +24,7 @@ t = np.arange(num_steps + 1) * params['SamplingTime']
 yref = np.array([0, 0])
 
 x_eq = np.array([np.pi, 0.0, 0.0, 0.0])
-deviation = np.array([0.2, -0.1, 0.3, 1.0])
+deviation = np.array([0.15, -0.1, 0.3, 1.0])
 
 # State constraints
 Ax = np.array([
@@ -46,7 +46,7 @@ gu = 0.5 * np.ones(2)
 # MPC horizon
 N = 5
 R_fixed = 1.0
-q_values = [1e-6, 1e-4, 1e-2, 1]
+q_values = [1e-6, 1e-4, 1e-2, 1e-1]
 colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red']
 
 # Run a simulation for each value of q and store the results
@@ -55,7 +55,7 @@ all_phi = []
 all_torque = []
 
 for q in q_values:
-    Q = q * np.eye(4)
+    Q = q * np.diag(np.array([100,1,0.1,0.001]))
     R = R_fixed
 
     controller = Controllers(A_d, B_d, C, Q, R, N, yref)
@@ -79,7 +79,7 @@ for q in q_values:
 
 # Plot the three outputs
 fig, axes = plt.subplots(3, 1, figsize=(10, 12))
-fig.suptitle(f'Q = q * I,  R = {R_fixed} fixed,  N = {N}', fontsize=20)
+fig.suptitle('Cost study', fontsize=20)
 
 for i in range(len(q_values)):
     axes[0].stairs(all_theta[i][:-1], t, color=colors[i], linewidth=1.8, label=f'q = {q_values[i]}')

@@ -8,7 +8,7 @@ import quadprog
 import sys
 
 params = {
-    'Jw': 0.005, 'Jp': 0.05, 
+    'Jw': 0.0025, 'Jp': 0.05, 
     'mp': 0.4, 'mw': 0.2, 
     'lp': 0.3, 'lw': 0.3, 
     'b1': 0.01, 'b2': 0.005,
@@ -20,9 +20,9 @@ plant = SystemModel(params)
 
 A, B, C = plant.Linearised(params['Theta_eq'])
 A_d, B_d = plant.ZeroOrderHold(params['SamplingTime'])
-Q_val = 1e-6*np.array([1, 1, 1, 1])
+Q_val = 1e-4*np.array([100,1,0.1,0.001])
 Q = np.diag(Q_val)
-R = 1
+R = 1.
 N = 5
 yref = np.array([0,0])
 Controller = Controllers(A_d, B_d, C, Q, R, N, yref)
@@ -87,7 +87,7 @@ P, gamma = Controller.computeXn(Ax, Au, gx, gu)
 # Calculate worst positive sum of states still in the region of attraction 
 deviation_max = Controller.Calculate_worst_state(P, gamma)
 print(f"Maximum allowed deviation on the pendulum angle: {deviation_max}")
-deviation = np.array([0.2, -0.1, 0.3, 1])
+deviation = np.array([0.15, -0.1, 0.3, 1])
 
 try:
     Check_ineq = P @ deviation
@@ -98,7 +98,7 @@ except ValueError as e:
     print(f"Deviation is too large for feasible solution")
     print(f"Setting the maximum deviation as the initial state")
     deviation = deviation_max
-
+#deviation = np.array([0.1,0,0,0])
 if params['Theta_eq'] == 0:
     x_eq = np.array([0., 0., 0., 0.])
     x0 = x_eq+deviation

@@ -16,7 +16,7 @@ plt.rcParams.update({
 })
 
 params = {
-    'Jw': 0.005, 'Jp': 0.05, 
+    'Jw': 0.0025, 'Jp': 0.05, 
     'mp': 0.4, 'mw': 0.2, 
     'lp': 0.3, 'lw': 0.3, 
     'b1': 0.01, 'b2': 0.005,
@@ -28,7 +28,7 @@ plant = SystemModel(params)
 
 A, B, C = plant.Linearised(params['Theta_eq'])
 A_d, B_d = plant.ZeroOrderHold(params['SamplingTime'])
-Q_val = 1e-6*np.array([1, 1, 1, 1])
+Q_val = 1e-4*np.array([100,1,0.1,0.001])
 Q = np.diag(Q_val)
 R = 1
 N = 5
@@ -127,7 +127,7 @@ for i in range(num_steps):
     if i % calc_u_count == 0:
         k = i // calc_u_count
         if k == num_steps_dis//2:
-            d = np.array([[0.00]])
+            d = np.array([[0.0]])
         error_nl = x_obs_nl[:, k]
         tau_nl,_,_ = Controller.mpc(error_nl,Ax, gx, Au, gu, A_con, g_con, dist=d_nl[:,[k]])  
         tau_nl = tau_nl[0]
@@ -159,9 +159,9 @@ fig, axes = plt.subplots(4, 1, figsize=(12, 24))
 fig.suptitle('Observer-based MPC Response')
 
 # --- Pendulum angle error ---
-# axes[0].stairs(x_lin_err[0, :-1], t_d, label='True State', linewidth=2)
+#axes[0].stairs(x_lin_err[0, :-1], t_d, label='True State', linewidth=2)
 axes[0].plot(t, x_nl[0], label='True State', linewidth=2)
-# axes[0].stairs(x_obs[0, :-1], t_d, linestyle='--', label='Observed', linewidth=2)
+#axes[0].stairs(x_obs[0, :-1], t_d, linestyle='--', label='Observed', linewidth=2)
 axes[0].set_ylabel('θ error (rad)')
 
 axes[0].set_ylim([np.pi - 0.3, np.pi + 0.3]) 
@@ -170,8 +170,8 @@ axes[0].grid(True)
 axes[0].set_xlim([0,10])
 
 # --- Wheel angle error ---
-# axes[1].stairs(x_lin_err[2, :-1], t_d, label='True State', linewidth=2)
-# axes[1].stairs(x_obs[2, :-1], t_d, linestyle='--', label='Observed', linewidth=2)
+#axes[1].stairs(x_lin_err[2, :-1], t_d, label='True State', linewidth=2)
+#axes[1].stairs(x_obs[2, :-1], t_d, linestyle='--', label='Observed', linewidth=2)
 axes[1].plot(t, x_nl[2], label='True State', linewidth=2)
 axes[1].set_ylabel('φ error (rad)')
 axes[1].legend(loc='upper right')

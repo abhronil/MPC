@@ -7,7 +7,7 @@ import sys
 
 # 1. System Parameters and Plant Initialization
 params = {
-    'Jw': 0.005, 'Jp': 0.05, 
+    'Jw': 0.0025, 'Jp': 0.05, 
     'mp': 0.4, 'mw': 0.2, 
     'lp': 0.3, 'lw': 0.3, 
     'b1': 0.01, 'b2': 0.005,
@@ -19,7 +19,7 @@ A, B, C = plant.Linearised(params['Theta_eq'])
 A_d, B_d = plant.ZeroOrderHold(params['SamplingTime'])
 
 # 2. MPC Weights and Reference
-Q_val = np.array([1, 1, 1, 1])
+Q_val = 1e-4*np.array([100,1,0.1,0.001])
 Q = np.diag(Q_val)
 R = 1
 yref = np.array([0,0])
@@ -30,7 +30,7 @@ num_steps_dis = int(total_time / params["SamplingTime"])
 t_d = np.arange(num_steps_dis + 1) * params['SamplingTime']
 
 # Fixed initial deviation for fair comparison across horizons
-deviation = np.array([0.2, -0.1, 0.3, 1])
+deviation = np.array([0.15, -0.1, 0.3, 1])
 if params['Theta_eq'] == 0:
     x_eq = np.array([0., 0., 0., 0.])
 else:
