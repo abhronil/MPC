@@ -212,3 +212,32 @@ axes[2, 1].grid(True)
 axes[2, 1].set_ylim([-0.0001,0.0001])
 plt.tight_layout()
 plt.show()
+
+from scipy.spatial import ConvexHull, HalfspaceIntersection
+from shapely.geometry import Polygon
+import geopandas as gpd
+def plot_polygon(A, b, ax, color='blue', label="RoA"):
+    '''
+    Visualize the polytope defined by A x <= b.
+    '''
+    halfspaces = np.hstack((A, -b[:, np.newaxis]))
+    feasible_point = np.zeros(A.shape[1])
+    hs = HalfspaceIntersection(halfspaces, feasible_point)
+    polygon = Polygon(hs.intersections).convex_hull
+    polygon_gpd = gpd.GeoSeries(polygon)
+    polygon_gpd.plot(ax=ax, alpha=0.3, color=color)
+    plt.plot(*polygon.exterior.xy, 'o', label=label, color = color)
+    plt.axis('equal')
+    ax.grid(True)
+    ax.legend(fontsize=12, loc='best')
+
+fig, ax = plt.subplots(figsize=(8, 8))
+ax.set_xlabel('$x_2$', fontsize=14)
+ax.set_ylabel('$x_1$', fontsize=14)
+ax.set_title('Region of Attraction vs. Terminal Constraint Set (x1 vs x2)', fontsize=16)
+ax.set_xlim([-0.3, 0.3])
+ax.grid(True)
+ax.legend(fontsize=12, loc='best')
+plot_polygon(P[:,0:2], gamma, ax)
+plot_polygon(A_con[:,0:2,], g_con, ax, color = 'red', label=r"X_f")
+plt.show()

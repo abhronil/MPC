@@ -77,7 +77,7 @@ for q in q_values:
 
     print(f"q = {q} done")
 
-# Plot the three outputs
+
 fig, axes = plt.subplots(3, 1, figsize=(10, 12))
 fig.suptitle('Cost study', fontsize=20)
 

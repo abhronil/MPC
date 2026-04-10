@@ -86,7 +86,7 @@ class Controllers:
                 # Maximize x such that the constraints are met this time step
                 x = linprog(-f[j], A_ub=A_inf, b_ub=b_inf)["x"]
                 #print(x)
-                # Check if constraints are also met next time step, If yes then you are done
+                # Check if constraints are met in next time step. If all constraints are met, then done.
                 if f[j]@x >= constraintsb[j]:
                     stopflag = False
                     break

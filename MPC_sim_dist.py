@@ -31,7 +31,7 @@ A_d, B_d = plant.ZeroOrderHold(params['SamplingTime'])
 Q_val = 1e-4*np.array([100,1,0.1,0.001])
 Q = np.diag(Q_val)
 R = 1
-N = 5
+N = 1
 yref = np.array([0])
 Controller = Controllers(A_d, B_d, C, Q, R, N, yref)
 

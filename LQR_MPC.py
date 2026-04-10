@@ -215,7 +215,6 @@ titles = ['Pendulum angle', 'Pendulum angular velocity', 'Wheel angle', 'Wheel a
 fig, axes = plt.subplots(3, 1, figsize=(10, 10))
 fig.suptitle('Linear MPC vs LQR Response')
 
-# 1. Pendulum angle (State index 0)
 axes[0].stairs(x_lin_err[0, :-1] + x_eq[0], t_d, color='tab:blue', label='Linear MPC', linewidth=2)
 axes[0].stairs(x_LQR[0, :-1] + x_eq[0], t_d, color='tab:green', label='LQR', linewidth=2, linestyle='--')
 axes[0].set_ylabel('θ (rad)')
@@ -225,7 +224,6 @@ axes[0].legend(loc='upper right')
 axes[0].grid(True)
 axes[0].set_xlim([0,10])
 
-# 2. Wheel angle (State index 2)
 axes[1].stairs(x_lin_err[2, :-1] + x_eq[2], t_d, color='tab:blue', label='Linear MPC', linewidth=2)
 axes[1].stairs(x_LQR[2, :-1] + x_eq[2], t_d, color='tab:green', label='LQR', linewidth=2, linestyle='--')
 axes[1].set_ylabel('φ (rad)')
@@ -234,7 +232,6 @@ axes[1].set_xlim([0,10])
 axes[1].legend(loc='upper right')
 axes[1].grid(True)
 
-# 3. Control torque
 axes[2].stairs(u_lin, t_d, color='tab:blue', label='Torque MPC', linewidth=2)
 axes[2].stairs(u_LQR, t_d, color='tab:green', label='Torque LQR', linewidth=2, linestyle='--')
 axes[2].set_ylabel('τ (N·m)')

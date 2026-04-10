@@ -5,7 +5,6 @@ from Control import Controllers
 import quadprog
 import sys
 
-# 1. System Parameters and Plant Initialization
 params = {
     'Jw': 0.0025, 'Jp': 0.05, 
     'mp': 0.4, 'mw': 0.2, 
@@ -18,18 +17,16 @@ plant = SystemModel(params)
 A, B, C = plant.Linearised(params['Theta_eq'])
 A_d, B_d = plant.ZeroOrderHold(params['SamplingTime'])
 
-# 2. MPC Weights and Reference
+
 Q_val = 1e-4*np.array([100,1,0.1,0.001])
 Q = np.diag(Q_val)
 R = 1
 yref = np.array([0,0])
 
-# 3. Simulation Parameters
 total_time = 10.0
 num_steps_dis = int(total_time / params["SamplingTime"])
 t_d = np.arange(num_steps_dis + 1) * params['SamplingTime']
 
-# Fixed initial deviation for fair comparison across horizons
 deviation = np.array([0.15, -0.1, 0.3, 1])
 if params['Theta_eq'] == 0:
     x_eq = np.array([0., 0., 0., 0.])
@@ -55,7 +52,6 @@ Au[0,0] = 1
 Au[1,0] = -1 
 gu = 0.5 * np.ones((2))
 
-# 4. Horizon Study Setup
 horizons = [5, 10, 20] # List of N values to test
 results = {} # Dictionary to store trajectories for each N
 
@@ -109,13 +105,12 @@ for N in horizons:
 
 labels = ['θ (rad)', 'θ̇ (rad/s)', 'φ (rad)', 'φ̇ (rad/s)']
 titles = ['Pendulum angle', 'Pendulum angular velocity', 'Wheel angle', 'Wheel angular velocity']
-# Create a figure with 3 subplots under each other
+
 fig, axes = plt.subplots(3, 1, figsize=(6, 12))
 fig.suptitle('MPC Horizon (N) Comparison')
 
 colors = ['tab:blue', 'tab:orange', 'tab:green']
 
-# 1. Plot Wheel angle (index 2 in state vector)
 ax_wheel = axes[0]
 for idx, N in enumerate(horizons):
     ax_wheel.stairs(results[N]['x'][2, :-1], t_d, color=colors[idx % len(colors)], label=f'N={N}', linewidth=1.5)
@@ -124,7 +119,6 @@ ax_wheel.grid(True)
 ax_wheel.set_xlim([0,10])
 ax_wheel.legend()
 
-# 2. Plot Pendulum angle (index 0 in state vector)
 ax_pend = axes[1]
 for idx, N in enumerate(horizons):
     ax_pend.stairs(results[N]['x'][0, :-1], t_d, color=colors[idx % len(colors)], label=f'N={N}', linewidth=1.5)
@@ -132,11 +126,11 @@ ax_pend.set_ylabel('θ (rad)')
 #ax_pend.set_title('Pendulum angle')
 ax_pend.grid(True)
 ax_pend.legend()
-# Adjust limits for pendulum angle for better view
+
 ax_pend.set_ylim([x_eq[0] - 0.3, x_eq[0] + 0.3])
 ax_pend.set_xlim([0,10])
 
-# 3. Plot Control Effort (Torque)
+
 ax_u = axes[2]
 for idx, N in enumerate(horizons):
     ax_u.stairs(results[N]['u'], t_d, color=colors[idx % len(colors)], label=f'N={N}', linewidth=1.5)
