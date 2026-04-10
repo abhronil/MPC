@@ -119,47 +119,6 @@ class Controllers:
             c = prob.value
             if c < c_min:
                 c_min = c
-        """     
-        P_inv = np.linalg.inv(Ellipsoid_m)
-        # 2. Extract the 2x2 submatrix for the two states we want to draw
-        # np.ix_ allows us to pull out the specific rows and columns safely
-        c = c_min
-        # Scale it by your constant c
-        Cov = c * P_inv
-
-        # 3. Generate 100 points around a standard unit circle
-        angles = np.linspace(0, 2 * np.pi, 100)
-        circle_points = np.vstack((np.cos(angles), np.sin(angles)))
-        
-        # 4. Transform the circle into our specific ellipse using Eigen decomposition
-        # Cov = V * D * V^T, where V are eigenvectors and D are eigenvalues
-        eigenvalues, eigenvectors = np.linalg.eigh(Cov)
-
-        # The transformation matrix is V * sqrt(D)
-        transform_matrix = eigenvectors @ np.diag(np.sqrt(eigenvalues))
-        u1 = eigenvectors[:, 0] * np.sqrt(eigenvalues[0])
-        u2 = eigenvectors[:, 1] * np.sqrt(eigenvalues[1])
-        vertex1 = u1+u2
-        vertex2 = u1-u2
-        vertex3 = -u1-u2
-        vertex4 = -u1+u2
-        # Apply transformation to the circle points
-        ellipse_points = transform_matrix @ circle_points
-        
-        ax.plot(ellipse_points[0, :], ellipse_points[1, :], 'b-', lw=2, label=f'Vf(x) <= {c}')
-        ax.fill(ellipse_points[0, :], ellipse_points[1, :], 'b', alpha=0.2)
-        ax.plot(vertex1[0], vertex1[1], marker="o")
-        ax.plot(vertex2[0], vertex2[1], marker="o")
-        ax.plot(vertex3[0], vertex3[1], marker="o")
-        ax.plot(vertex4[0], vertex4[1], marker="o")
-        # Plot formatting
-        ax.set_title(f"Terminal Region")
-        ax.axhline(0, color='black', lw=0.5)
-        ax.axvline(0, color='black', lw=0.5)
-        ax.grid(True, linestyle='--', alpha=0.7)
-        ax.legend()
-        ax.axis('equal') # Ensures the visual shape isn't distorted by axis stretching
-        """
         return c_min
     def augment_matrix(self):
         A_aug = block_diag(self.A, np.eye(self.dimd))
